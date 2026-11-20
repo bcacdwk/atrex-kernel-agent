@@ -37,6 +37,10 @@ def main(argv=None):
                         help="explicit public tool resource root for the selected profile")
     parser.add_argument("--profile", help="launch profile (default: light; workflow selects Legacy)")
     parser.add_argument("--patch", type=Path, action="append", default=[])
+    parser.add_argument("--schema", action=argparse.BooleanOptionalAction, default=None,
+                        help="enable the optional fixed Schema selection (default: off)")
+    parser.add_argument("--schema-config", type=Path,
+                        help="fixed Schema selection JSON; read only with --schema")
     register_request_options(parser)
     options = parser.parse_args(argv)
     try:
@@ -48,7 +52,7 @@ def main(argv=None):
         parser.error(f"tool resource directory does not exist: {root}")
     payload = read(os.environ)
     if payload is not None:
-        if options.patch or options.profile is not None:
+        if options.patch or options.profile is not None or options.schema is not None or options.schema_config is not None:
             parser.error("cannot override a reconstructed launch selection")
         if options.workflow_request is None:
             parser.error("continuation requires its recorded --workflow-request")
@@ -60,6 +64,18 @@ def main(argv=None):
         profile = profile_path(options.profile)
     except ValueError as error:
         parser.error(str(error))
+    if options.schema:
+        if options.schema_config is None:
+            parser.error("--schema requires --schema-config with a fixed Task/backend selection")
+        try:
+            from aka.workflow.schema.launch import run as run_schema
+        except ImportError as error:
+            parser.error("--schema requires the matching optional atrex-aka-schema installation: " + str(error))
+        try:
+            return run_schema(profile, Invocation(arguments), configuration=options.schema_config,
+                              patch_files=options.patch, variables={"repo_root": str(root)})
+        except (ValueError, OSError) as error:
+            parser.error(str(error))
     return run_profile(profile, Invocation(arguments),
         patch_files=options.patch, variables={"repo_root": str(root)})
 

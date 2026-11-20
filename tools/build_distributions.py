@@ -21,6 +21,7 @@ OWNERS = {
     'atrex-aka-framework': ('aka/__init__.py', 'aka/__main__.py', 'aka/cli.py', 'aka/workflow/__init__.py', 'aka/workflow/budgets.py', 'aka/core', 'aka/contracts', 'aka/bootstrap', 'aka/execution', 'aka/agent', 'aka/task', 'aka/resources', 'aka/evaluation', 'aka/experiment', 'aka/acceptance'),
     'atrex-aka-legacy': ('aka/workflow/legacy',),
     'atrex-aka-light': ('aka/workflow/light',),
+    'atrex-aka-schema': ('aka/workflow/schema',),
     'atrex-aka-dashboard': ('aka/dashboard',),
     'atrex-aka-observation-long-horizon': ('aka/observation/long_horizon',),
 }

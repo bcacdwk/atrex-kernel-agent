@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atrex-aka-schema"
+version = "0.2.0"
+description = "Optional fixed KernelSchema selection and native AKA role interfaces"
+requires-python = ">=3.11"
+dependencies = ["atrex-aka-light==0.2.0", "kernelschema==0.1.0"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["aka.workflow.schema", "aka.workflow.schema.*"]
+
+[tool.setuptools.package-data]
+"aka.workflow.schema" = ["*.json", "*.md"]
