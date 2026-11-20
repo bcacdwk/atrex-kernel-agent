@@ -5,20 +5,17 @@ separately requires native AKA coder/reviewer permission/output captures. Neithe
 the K3 public profile nor a CPU test transport can sign this qualification.
 """
 from pathlib import Path
-from types import SimpleNamespace
 
 from kernelschema.contracts import ProtocolError, UnsupportedError, digest, sha256, loads
 from kernelschema.evaluation.channel import AgateChannel as KSChannel
 from kernelschema.runtime import ClaudeProfile
 
 from .evaluation import AgateChannel
-from .session import RoleSession, NATIVE_PROFILE
-from .state import invocation_from_document
+from .session import NATIVE_PROFILE
 
 
 def native_admission(context, reference):
-    from . import session, stdin_exec
-    from aka.agent import native
+    from .native_probe import implementation, references, validate_capture
     if reference is None:
         raise UnsupportedError("AKA native coder/reviewer qualification has not been selected")
     retained = [entry["file"] for entry in context.objects["materials"]["entries"] if not entry["roles"]]
@@ -26,7 +23,7 @@ def native_admission(context, reference):
         raise UnsupportedError("AKA native qualification must be retained as explicit host-only Materials (roles=[]) ")
     value = loads(context.bundle.read(reference))
     settings = context.objects["profile"]["parameters"]["claude"]
-    expected = {m.__name__: sha256(Path(m.__file__).read_bytes()) for m in (session, stdin_exec, native)}
+    expected = implementation()
     if (value.get("format") != "aka.native.qualification.v1" or value.get("profile") != NATIVE_PROFILE
             or value.get("claude_sha256") != digest(settings) or value.get("implementation") != expected
             or value.get("synthetic") is not False or set(value.get("roles", {})) != {"coder", "reviewer"}):
@@ -34,21 +31,13 @@ def native_admission(context, reference):
     profile = ClaudeProfile(**settings)
     if sha256(Path(profile.executable).read_bytes()) != profile.executable_sha256:
         raise ProtocolError("qualified native CLI executable changed")
-    for role, capture in value["roles"].items():
-        if capture["invocation"] not in retained:
-            raise UnsupportedError("original native invocation capture is missing from host-only Materials")
-        document = loads(context.bundle.read(capture["invocation"]))
-        invocation = invocation_from_document(document)
-        locator = capture["locator"]
-        if locator["role"] != role or locator["profile"] != NATIVE_PROFILE or locator["native_context_resume"] is not False:
-            raise ProtocolError("native qualification role/locator mismatch")
-        inspector = object.__new__(RoleSession)
-        inspector.role = SimpleNamespace(document={"role": role}, assignment_sha256=locator["assignment_sha256"])
-        inspector.profile, inspector.workspace = profile, Path(locator["workspace"])
-        inspector._session = SimpleNamespace(session_id=locator["session_id"])
-        errors, output = inspector._inspect(invocation)
-        if errors or output is None or invocation.terminal_usage.total_tokens is None:
-            raise UnsupportedError("AKA native original permission/output/usage capture is incomplete: " + ", ".join(errors))
+    try:
+        if any(ref not in retained for ref in references(value)):
+            raise UnsupportedError("original native input/exec/invocation capture is missing from host-only Materials")
+        for role, capture in value["roles"].items():
+            validate_capture(context.bundle, capture, profile, role)
+    except (KeyError, TypeError, ValueError) as error:
+        raise UnsupportedError("AKA native qualification lacks valid original transport artifacts: " + str(error)) from error
     return {"status": "pass", "reason": "original AKA native role/profile captures verified"}
 
 
@@ -63,7 +52,8 @@ class EvaluationProxy:
         return self.service.inner.executor
 
     def identity(self):
-        return {"factory": "aka.workflow.schema.agate", "fixed_evaluation_sha256": digest(self.service.channel.settings)}
+        settings = self.service.channel.settings if self.service.channel is not None else None
+        return {"factory": "aka.workflow.schema.agate", "fixed_evaluation_sha256": digest(settings)}
 
     def prepare(self, staged, operation):
         return self.service.inner.prepare(staged, operation)
@@ -81,7 +71,7 @@ class Services:
     def __init__(self, profile, root, parameters):
         if set(parameters) != {"native_qualification"}:
             raise ProtocolError("AKA Agate services need exactly native_qualification Ref or null")
-        self.channel = KSChannel(profile, Path(root) / "agate-jobs")
+        self.channel = KSChannel(profile, Path(root) / "agate-jobs") if "evaluation" in profile["parameters"] else None
         self.native_qualification = parameters["native_qualification"]
         self.inner = None
         self.evaluation = EvaluationProxy(self)
@@ -92,6 +82,8 @@ class Services:
     def admission(self, context):
         try:
             native_admission(context, self.native_qualification)
+            if self.channel is None:
+                raise UnsupportedError("select the original K6 full-Task Agate channel and six-job qualification")
             result = self.channel.admission(context)
             if result["status"] != "pass":
                 return result

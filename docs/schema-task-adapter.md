@@ -20,7 +20,7 @@ bytes/modes, without needing the original input directory.
 
 | Original role | Schema mapping |
 | --- | --- |
-| `AgentProblem.files` | Exact Contract, acceptance, and explicitly selected role Materials. Private evaluator/input aliases are rejected, including renamed identical bytes. |
+| `AgentProblem.files` | Exact Contract, acceptance, and explicitly selected role Materials. Exact public target/timing descriptions can be granted even though they are evaluator dependencies. Private evaluator executable/input aliases remain rejected, including renamed identical bytes. |
 | `LoadedProblem.reference/public_contract` | Public `contract.yaml`; it is not a Python reference wrapper. |
 | `InitialSource(kind="kernel")` | Verified `Task.baseline_source`, the exact executable FP32 softmax plus copy baseline. Existing `LegacySourceProvider` consumes it directly. |
 | `EvaluationInput(adapter="kernelschema-row-softmax-v1")` | Private canonical bundle closure plus Task/scope binding. No evaluator files are copied through `runtime_files()`. |

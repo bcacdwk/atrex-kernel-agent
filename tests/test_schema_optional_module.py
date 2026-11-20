@@ -142,6 +142,30 @@ def test_fixed_role_native_first_repair_retry_and_reopen(fixed, tmp_path):
         agent.close()
 
 
+def test_complete_native_receipt_precedes_public_observation_failure(fixed, tmp_path, monkeypatch):
+    from aka.agent import public_output
+    retained = []
+    p, trace = profile(tmp_path), []
+    agent = native_agent(p, process_runner=fake_runner(trace))
+    scope = tmp_path / "scope"
+    scope.mkdir()
+    session = RoleSession(agent, RoleContext.prepare(fixed.run, "coder", source=fixed.task["starter"]), p,
+        workspace=scope, session_id=str(UUID(int=1)), output_directory=tmp_path / "output",
+        authorize=lambda: True, record_locator=lambda _: None, retain_invocation=retained.append)
+    def fail(*args, **kwargs):
+        raise OSError("public observation storage interrupted")
+    monkeypatch.setattr(public_output, "record_invocation", fail)
+    try:
+        with pytest.raises(OSError, match="observation storage"):
+            session.invoke()
+        assert len(retained) == 1
+        assert retained[0].terminal_usage.total_tokens == 9
+        assert retained[0].stdout and retained[0].exit_status == 0
+    finally:
+        session.close()
+        agent.close()
+
+
 @pytest.mark.parametrize("bad", ["tool", "schema_output", "missing_init", "model", "terminal_model"])
 def test_untrusted_native_permission_claims_preserve_usage_and_reject_output(fixed, tmp_path, bad):
     def corrupt(events):

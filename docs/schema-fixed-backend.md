@@ -77,10 +77,13 @@ hashes for `session`, `stdin_exec` and original `aka.agent.native`,
 `synthetic=false`, and coder/reviewer entries containing an original
 `NativeInvocation` Ref and A3 native locator. Admission rechecks the executable,
 actual permission initialization, model/session, output parsing and complete
-usage. K3 runtime qualification does not sign this AKA transport. This batch
-has no actual native/model/GPU qualification capture.
+usage. Exact original role input and pre-exec process records are also required;
+Agent/provider/process/normalizer source identities are frozen with the capture.
+K3 runtime qualification does not sign this AKA transport. The finite
+`python -m aka.workflow.schema.native_probe` captures these actual artifacts;
+see [source delivery and qualification](schema-source-release.md).
 
-Retain the qualification artifact and both original invocation Refs as explicit
+Retain the qualification artifact and original input/exec/invocation Refs as explicit
 Materials entries with `roles=[]`. KS imports that selected closure while no
 model role receives it; profile parameters alone do not import nested Ref
 files. No credential or whole prior run directory belongs in these materials.
@@ -98,6 +101,9 @@ NativeInvocation before returning to policy. A lost outer return reuses that
 receipt and exact installed C. An invocation without a recoverable original
 receipt remains `blocked/settle_only`; no new model, key or channel replaces it.
 The original process/session/exec-intent and output directory stay available.
+The complete native return is retained before derived public observation files
+are written. A separate durable `finishing` phase recovers paid production/native
+finish work before publication, preserving the original source Ref and operation.
 
 The only balance/clock implementation is OwnerAccount. V0, concurrent prefetch
 reviewers, each coder/reviewer/repair, full Task evaluation, production review,

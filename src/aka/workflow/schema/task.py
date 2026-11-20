@@ -102,13 +102,21 @@ class SchemaProblemProvider:
         roots = [self.task, self.scope] + ([self.materials] if self.materials else [])
         closure = bundle.closure(roots)
         public = {"contract.yaml": task["contract"], "acceptance.md": task["acceptance"]}
+        evaluator = bundle.document(task["evaluator"], "evaluator")
         private = bundle.closure([task["evaluator"]])
         forbidden_hashes = {sha256(value.data) for value in private.values()}
+        # Public target/timing descriptions are also evaluator dependencies.
+        # Explicit role grants may deliver those exact bytes (including aliases),
+        # while executable evaluator files and actual inputs always stay private.
+        descriptions = {task["environment"]["sha256"], evaluator["timing"]["sha256"]}
+        private_payloads = {ref["sha256"] for ref in
+            [*evaluator["files"], evaluator["entrypoint"], evaluator["inputs"]]}
         if self.materials:
             for entry in bundle.document(self.materials, "materials")["entries"]:
                 if self.role in entry["roles"]:
                     reference = entry["file"]
-                    if reference["path"] in private or reference["sha256"] in forbidden_hashes:
+                    if ((reference["path"] in private or reference["sha256"] in forbidden_hashes)
+                            and (reference["sha256"] not in descriptions or reference["sha256"] in private_payloads)):
                         raise ProtocolError("Materials cannot expose private evaluator bytes")
                     # IDs are not filesystem names; ordinal names avoid traversal.
                     public[f"materials/{len(public) - 2}.txt"] = reference

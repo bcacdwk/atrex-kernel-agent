@@ -44,14 +44,15 @@ def invocation_from_document(value):
 
 
 class Transactions:
-    def __init__(self, context, binding, *, continuing=False, checkpoint=None):
+    def __init__(self, context, binding, *, continuing=False, checkpoint=None, namespace=NAMESPACE):
         self.context = context
+        self.namespace = namespace
         self._lock = RLock()
         self.owner = OwnerAccount.for_context(context, create=not continuing)
         self.checkpoint = checkpoint or (lambda boundary: None)
-        path = context.root / f".runtime/state/{NAMESPACE}.json"
+        path = context.root / f".runtime/state/{namespace}.json"
         if path.exists():
-            self.state = context.load_state(NAMESPACE)
+            self.state = context.load_state(namespace)
             if self.state["binding"] != binding or self.state["version"] != VERSION:
                 raise ProtocolError("original AKA backend/native configuration changed")
         else:
@@ -66,7 +67,7 @@ class Transactions:
 
     def save(self, boundary):
         with self._lock:
-            self.context.save_state(NAMESPACE, self.state)
+            self.context.save_state(self.namespace, self.state)
         self.checkpoint(boundary)
 
     def validate(self):

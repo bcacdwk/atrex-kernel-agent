@@ -385,16 +385,6 @@ class NativeSession:
         self._invoked = True
         from .public_output import record_invocation
 
-        record_invocation(
-            self.output_directory,
-            self.runtime_id,
-            self._session_id,
-            terminal_usage,
-            events,
-            observation_errors,
-            resume_supported=self.supports_resume,
-            stdout=stdout,
-        )
         result = NativeInvocation(
             exit_status,
             timed_out,
@@ -409,5 +399,17 @@ class NativeSession:
         )
         recorder = getattr(self, "record_native_invocation", None)
         if recorder is not None:
+            # The optional owner must retain the complete original return even
+            # if the derived public observation files cannot be written.
             recorder(result)
+        record_invocation(
+            self.output_directory,
+            self.runtime_id,
+            self._session_id,
+            terminal_usage,
+            events,
+            observation_errors,
+            resume_supported=self.supports_resume,
+            stdout=stdout,
+        )
         return result

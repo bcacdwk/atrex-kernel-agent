@@ -559,6 +559,37 @@ def test_native_production_and_finish_review_receipts_are_paid_once(fixed, tmp_p
         workflow.modules.agent.close()
 
 
+def test_finish_recovers_retained_native_review_before_publishing(fixed, tmp_path):
+    workflow, campaign, service = setup(fixed, tmp_path, production=True)
+    controller = workflow.controller
+    fired = []
+    def crash(boundary):
+        if boundary == "native_invocation_retained" and controller.tx.state["phase"] != "running" and not fired:
+            fired.append(boundary)
+            raise KeyboardInterrupt("finish review returned; absorption not yet durable")
+    controller.tx.checkpoint = crash
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            campaign.run()
+        assert fired and not controller.tx.state["finished"]
+        calls_before = len(fixed.trace)
+    finally:
+        workflow.close()
+        workflow.modules.agent.close()
+    workflow, campaign, _ = setup(fixed, tmp_path, production=True, services=service, continuing=True)
+    try:
+        result = campaign.run()
+        assert workflow.controller.tx.state["finished"] is True
+        assert not result["usage"]["unsettled"]
+        assert result["status"] == "completed"
+        assert len(fixed.trace) == calls_before
+        assert result["usage"]["calls"]["reviewer"] == len([i for i in fixed.trace if i["role"] == "reviewer"])
+        assert campaign.run() == result
+    finally:
+        workflow.close()
+        workflow.modules.agent.close()
+
+
 def test_output_limit_recovery_is_a_new_paid_call_from_exact_stable_C(fixed, tmp_path):
     workflow, campaign, _ = setup(fixed, tmp_path)
     original = workflow.modules.agent._process_runner
@@ -621,7 +652,8 @@ print(o.path)
         workflow.modules.agent.close()
 
 
-def test_actual_CLI_schema_default_factory_returns_zero_fee_blocked_result(fixed, tmp_path):
+@pytest.mark.parametrize("command", ["workflow", "optimize"])
+def test_actual_CLI_schema_default_factory_returns_zero_fee_blocked_result(fixed, tmp_path, command):
     import subprocess
     import sys
     from aka.workflow.schema import backend
@@ -634,7 +666,7 @@ def test_actual_CLI_schema_default_factory_returns_zero_fee_blocked_result(fixed
         "run_root": str(root), "backend": {"factory": "aka.workflow.schema.backend:create_workflow",
             "implementation_sha256": sha256(Path(backend.__file__).read_bytes()), "parameters": {}}}))
     repo = Path(__file__).resolve().parents[1]
-    child = subprocess.run([sys.executable, "-I", "-m", "aka", "workflow", "--repo-root", str(repo),
+    child = subprocess.run([sys.executable, "-I", "-m", "aka", command, "--repo-root", str(repo),
         "--problem", str(fixed.a5.root), "--workspace-base", str(tmp_path / "native-cli"),
         "--platform", "H20", "--framework", "triton", "--framework-baseline", "never", "--convert-after", "0",
         "--schema", "--schema-config", str(config)], cwd=tmp_path, capture_output=True, text=True, timeout=60)

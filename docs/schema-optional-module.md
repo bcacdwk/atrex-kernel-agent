@@ -228,5 +228,7 @@ allowances are denied. The trusted CLI's explicit flags enforce the model tool
 boundary; this is not an OS sandbox for a malicious CLI binary. K3's public
 Claude profile/flags are reused where applicable, but its runtime qualification
 does not transfer to this AKA transport. Actual AKA native/model/GPU
-qualification, A5 native three-audit policy and complete direct paths await
-their subsequent real records.
+qualification require their own real records. A5's three audit and direct paths
+are implemented in the [fixed backend](schema-fixed-backend.md); the bounded
+native capture and source delivery procedure are documented in
+[source delivery](schema-source-release.md).

@@ -235,6 +235,10 @@ class FixedController:
         files = frozenset(p.relative_to(workspace).as_posix() for p in paths)
         key = "production-" + native_digest
         op = self.tx.state["operations"].get(key)
+        if op:
+            if op["source"]["sha256"] != source["sha256"]:
+                raise ProtocolError("original production review source changed")
+            source = op["source"]  # Preserve its original published Ref on recovery.
         if op and "production_errors" in op:
             return op["production_errors"]
         if key + "-input" not in self.tx.state:
@@ -404,7 +408,9 @@ class FixedController:
             return self.publish()
         try:
             self.tx.owner.begin(self.run.run_id)
-            if self.run.request["mode"] == "verify_only":
+            if state["phase"] == "finishing":
+                pass  # Recover the original paid finish before publishing.
+            elif self.run.request["mode"] == "verify_only":
                 self.verify_only()
             else:
                 exists = (self.run.root / f".runtime/state/{SOURCE_NAMESPACE}.json").exists()
@@ -414,7 +420,7 @@ class FixedController:
                     last = state["episodes"].get(str(checkpoint.episodes), {})
                     if active is None and last.get("attempt") and qualifies(assessment(state, state["latest"])):
                         current = assessment(state, state["latest"])
-                        state.update(qualified=state["latest"], status="completed", recovery="none", phase="done",
+                        state.update(qualified=state["latest"], status="completed", recovery="none", phase="finishing",
                             stop_reason="current exact C qualified; soft performance goal " + current["performance_goal"])
                         break
                     episode = (active["episode"] if active else checkpoint.episodes
@@ -423,16 +429,22 @@ class FixedController:
                     if state["phase"] == "audit_unknown":
                         break
                     if outcome.attempt is None:
-                        state.update(status="partial", recovery="none", stop_reason=outcome.reason, phase="done")
+                        state.update(status="partial", recovery="none", stop_reason=outcome.reason, phase="finishing")
                         break
                     current = assessment(state, state["latest"])
                     if qualifies(current):
-                        state.update(qualified=state["latest"], status="completed", recovery="none", phase="done",
+                        state.update(qualified=state["latest"], status="completed", recovery="none", phase="finishing",
                             stop_reason="current exact C qualified; soft performance goal " + current["performance_goal"])
                     else:
                         self.feedback(current)
-            if state["phase"] == "done" and not self.tx.owner.fences():
+            if state["phase"] == "finishing":
+                outcome = state.setdefault("finish_outcome", {key: state[key] for key in
+                    ("status", "recovery", "stop_reason", "qualified")})
+                state.update(outcome)
+                self.tx.save("finishing")
                 self.finish()
+                state["phase"] = "done"
+                self.tx.save("done")
         except (BudgetDenied, AdmissionDenied, PermissionError) as error:
             for op in state["operations"].values():
                 if op.get("reservation"):
@@ -440,6 +452,8 @@ class FixedController:
                     if not owned["launched"] and not owned["released"]:
                         self.tx.owner.release_unstarted(op["id"])
             state.update(status="partial", recovery="none", stop_reason=str(error), phase="done")
+            if self.campaign.optimization_mode == "production" and not state["finished"]:
+                state["qualified"] = None
         except Unsettled as error:
             state.update(status="blocked", recovery="settle_only", stop_reason=str(error))
         finally:
@@ -459,7 +473,7 @@ class FixedController:
         self.evaluate(root, source)
         value = self.review(source)
         self.tx.state.update(latest=source, qualified=source if qualifies(value) else None,
-            status="completed" if qualifies(value) else "partial", recovery="none", phase="done",
+            status="completed" if qualifies(value) else "partial", recovery="none", phase="finishing",
             stop_reason="verified exact seed; soft performance goal " + value["performance_goal"])
 
     def feedback(self, current):
@@ -495,6 +509,8 @@ class FixedController:
                 self._original_finish(self.tx.state["stop_reason"])
             except RuntimeError as error:
                 self.tx.state["diagnostics"].append("native G export: " + str(error))
+        if self.tx.owner.fences():
+            raise Unsettled("original finish operation remains unresolved")
         self.tx.state["finished"] = True
         self.tx.save("finished")
 

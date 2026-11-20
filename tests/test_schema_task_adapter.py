@@ -89,11 +89,12 @@ def test_public_initial_private_snapshot_roles(native_task, tmp_path):
         provider.content(problem, workspace).assert_private()
 
 
-def test_private_material_alias_and_subset_fail_before_snapshot(task_bundle, tmp_path):
+@pytest.mark.parametrize("field", ["entrypoint", "inputs"])
+def test_private_material_alias_and_subset_fail_before_snapshot(task_bundle, tmp_path, field):
     f = task_bundle
     p = Publication(f["root"])
     evaluator = f["bundle"].document(f["evaluator"], "evaluator")
-    private = evaluator["entrypoint"]
+    private = evaluator[field]
     alias = p.put_bytes("renamed-allowed.txt", f["bundle"].read(private))
     materials = p.put_json("materials.json", {"protocol": PROTOCOL, "kind": "materials", "entries": [
         {"id": "mislabelled", "file": alias, "roles": ["coder"], "origin": "test", "license": "test"}]})
@@ -105,6 +106,23 @@ def test_private_material_alias_and_subset_fail_before_snapshot(task_bundle, tmp
     with pytest.raises(UnsupportedError, match="full Task"):
         SchemaProblemProvider(f["task"], partial).load(f["root"], snapshot_directory=tmp_path / "partial")
     assert not (tmp_path / "private").exists() and not (tmp_path / "partial").exists()
+
+
+@pytest.mark.parametrize("field", ["environment", "timing"])
+def test_explicit_public_evaluation_descriptors_remain_deliverable(task_bundle, tmp_path, field):
+    f = task_bundle
+    p = Publication(f["root"])
+    evaluator = f["bundle"].document(f["evaluator"], "evaluator")
+    original = evaluator[field]
+    alias = p.put_bytes("selected-public-description.txt", f["bundle"].read(original))
+    materials = p.put_json("materials.json", {"protocol": PROTOCOL, "kind": "materials", "entries": [
+        {"id": "task_" + field, "file": alias, "roles": ["coder"], "origin": "explicit public Task descriptor", "license": "test"}]})
+    p.commit([materials])
+    provider = SchemaProblemProvider(f["task"], f["scope"], materials)
+    problem = provider.load(f["root"], snapshot_directory=tmp_path / "private")
+    assert len(problem.agent.files) == 3
+    assert problem.agent.files[-1].source.read_bytes() == f["bundle"].read(original)
+    assert provider.runtime_files(problem) == ()
 
 
 def test_unimplemented_evaluator_and_wrong_baseline_fail_before_bootstrap(task_bundle, tmp_path):
