@@ -2,8 +2,9 @@
 
 This source profile supports Linux, an explicit installed AKA source checkout,
 the fixed KS source/resource checkout, and the original single-file row-softmax
-Task. It implements the fixed controller; it does not implement the A6 planner
-loop, FA4/source trees, V1 conversion, model tools, native context resume or hard
+Task. It implements the fixed controller and the explicit
+[finite dynamic workflow](schema-dynamic-workflow.md). It does not support
+FA4/source trees, V1 conversion, model tools, native context resume or hard
 token budgets. Python 3.13 has been exercised; Python 3.11 compatibility remains
 unverified.
 
@@ -11,8 +12,8 @@ unverified.
 | --- | --- |
 | Original AKA | <https://github.com/alibaba/atrex-kernel-agent>, base `bf5557ac04f6ff9988901d511cf25e1cbe61a1bc` |
 | AKA integration fork | <https://github.com/bcacdwk/atrex-kernel-agent>, fixed-controller review base `4be322b0635a2c5023077eb6b1308752d9b61996` |
-| KS dependency | <https://github.com/bcacdwk/KernelSchema>, detached gitlink `b1049e19403238125d4210dd275a8f3e2874ba47` |
-| KS selected resource manifest | `src/aka/workflow/schema/release.json`, SHA-256 `d108ae06e45fb405eb9ba6c900404550b454958d53b628ad8a90e01df16e5da1` |
+| KS dependency | <https://github.com/bcacdwk/KernelSchema>, detached gitlink `8e846d7dd6321dc226436ac8fc80fbf569b0965f` |
+| KS selected resource manifest | `src/aka/workflow/schema/release.json`, SHA-256 `94d2457ea5128ecd72d78448abaf489a3ae2c098d370b7748c77101c5bd57af7` |
 
 The review base above precedes the accompanying fixes and native probe. A
 published release must identify the final reviewed AKA commit and wheel hashes;

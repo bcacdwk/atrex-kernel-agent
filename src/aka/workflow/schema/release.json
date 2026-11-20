@@ -1,6 +1,6 @@
 {
   "aka_base_commit": "c984d141145d31795514579db213413a1bbb0775",
-  "commit": "b1049e19403238125d4210dd275a8f3e2874ba47",
+  "commit": "8e846d7dd6321dc226436ac8fc80fbf569b0965f",
   "files": {
     "DESIGN_SCHEMA.md": {
       "mode": 420,
@@ -164,11 +164,11 @@
     },
     "kernelschema/INTERFACE.md": {
       "mode": 420,
-      "sha256": "f350e1d455e8e3e2181c6f885b007df672b224e654c784059b13a9c21e02f95e"
+      "sha256": "9956896cabb20402bf92d711c4b0857ba3aadca8fc3f2b8629cc9cba8e6f1221"
     },
     "kernelschema/WRITING.md": {
       "mode": 420,
-      "sha256": "4532c378b2e03175b88328580de07591071458d3239d546e09801fc50211d558"
+      "sha256": "6d28513a1a51b17c7fe3bb7a5b97b1ab74247f88b836446563cf66a8e8f8baf3"
     },
     "kernelschema/__init__.py": {
       "mode": 420,
@@ -184,11 +184,11 @@
     },
     "kernelschema/api.py": {
       "mode": 420,
-      "sha256": "706e27b222aaa262ae0a8a284e33636d6f6bfd63917c42615c8fd42f88915327"
+      "sha256": "08d0c9796810467c8d084c95a8beffb55f29b1219ddae74316726d8d0e624aa2"
     },
     "kernelschema/artifacts.py": {
       "mode": 420,
-      "sha256": "bec4f7ce330029360b72ae4342029723f5cec99a41c5f523796434a160ce81eb"
+      "sha256": "31c958293b91e445f441c904b6a14faa079b9eb77a56e61000ef116b53189d68"
     },
     "kernelschema/budget.py": {
       "mode": 420,
@@ -200,7 +200,7 @@
     },
     "kernelschema/contracts.py": {
       "mode": 420,
-      "sha256": "4736e8a08506b9c875ad365e31f10ddb30520d2ea18ea6cf682fab28f18e4c06"
+      "sha256": "611a1eb71e65e0a45980ced87bd7bec5ed9b38183912016b40b8e6cbfefefe51"
     },
     "kernelschema/design.py": {
       "mode": 420,
@@ -213,6 +213,10 @@
     "kernelschema/evaluation/_controller.py": {
       "mode": 420,
       "sha256": "3bd1102211acd3d7d819bbc2b5e8418c984b1f7aa8718e9a458e04bd9d8400d9"
+    },
+    "kernelschema/evaluation/_fa4_remote.py": {
+      "mode": 420,
+      "sha256": "0caa1980b5c87a626932e6ff197c70da3be37eb0bb669dac581f5ebc7d67aae2"
     },
     "kernelschema/evaluation/_remote.py": {
       "mode": 420,
@@ -228,15 +232,27 @@
     },
     "kernelschema/evaluation/agate.py": {
       "mode": 420,
-      "sha256": "5312c25cb71c81ed0c089b8ae041b96d6f3d955cb07f1d8a7c5d6fdbfe8563e1"
+      "sha256": "09852f4d2519226407e9930b6a34e1f9a0c07d44e245caecb0e12e303540e6c1"
     },
     "kernelschema/evaluation/channel.py": {
       "mode": 420,
       "sha256": "317f07944febab72d000fc59e5bf797edab734ac8e25a869db6c5e6f0b4beef0"
     },
+    "kernelschema/evaluation/dispatch.py": {
+      "mode": 420,
+      "sha256": "ddd00f555ab8d78a4a93cdc598369302dfc4e5671a649a72a0cca1637f14fc1f"
+    },
     "kernelschema/evaluation/environment.py": {
       "mode": 420,
       "sha256": "6f77a9de9e9dbb8c3471bcfad52b156f2cbc8117a7f810b3cc2a316303e60541"
+    },
+    "kernelschema/evaluation/fa4.py": {
+      "mode": 420,
+      "sha256": "6099a7bada39d58352bd60cc52f272c3bf3403cee74b1fdbf0ca2eda2561dbfd"
+    },
+    "kernelschema/evaluation/fa4_channel.py": {
+      "mode": 420,
+      "sha256": "6b68ae7beaac1999e58b17d7975ec58fd0db4f682242213526f01e8bef845fa4"
     },
     "kernelschema/evaluation/local.py": {
       "mode": 420,
@@ -252,11 +268,11 @@
     },
     "kernelschema/fidelity.py": {
       "mode": 420,
-      "sha256": "be4e087634dba3416115a86ef2016db4a076496e9383266bbc34c38eafbbca01"
+      "sha256": "a03924e0c80f17957718e02c7e317850c3f69ff79cd4eacab1bbc6ea51e33c68"
     },
     "kernelschema/implement/INTERFACE.md": {
       "mode": 420,
-      "sha256": "c7e85f915e92392d52bf96aa66f999f4518d5a5609c6cdef533af5942a847e97"
+      "sha256": "5005cbb782be7fcf72606e7a1978549129b680d7532afe01520a293d956eda70"
     },
     "kernelschema/implement/__init__.py": {
       "mode": 420,
@@ -264,15 +280,15 @@
     },
     "kernelschema/implement/fidelity-method.v1.md": {
       "mode": 420,
-      "sha256": "d9682555aba686d2f3ee711396bd4331f6e47bdc205b928d436c2360e720f1dc"
+      "sha256": "c7d0c46c2b917ec5b401bafc7b218ff3dee5d4f2fe3914c5ffec8ddef7cff391"
     },
     "kernelschema/implement/reference.py": {
       "mode": 420,
-      "sha256": "5082eadf6fa3ba1bb28e550f591d86e0ffee45e2e1f9343533a6d781354f3780"
+      "sha256": "3fbad53e26ac27da4bb7118741a8036996970282d4adfda0ab7af0a46d289445"
     },
     "kernelschema/materials.py": {
       "mode": 420,
-      "sha256": "b69a3aeabd9f31a24cf8049909507edeadae40b5b3c52e86b56782677739761c"
+      "sha256": "e709447f051bd68fb6af402910aebbc28e43310b40fac416454d2c8ee8cfbc1f"
     },
     "kernelschema/optimize.py": {
       "mode": 420,
@@ -284,11 +300,11 @@
     },
     "kernelschema/runtime/INTERFACE.md": {
       "mode": 420,
-      "sha256": "e50bd16fb7f3dd8f9385b45974c8a3bd9d37b76a090ed89a0be8f1770340d4f3"
+      "sha256": "544ca5c792067787fbfa08f4e05b0940272ce72a32d0a9945e751a87a7791e5b"
     },
     "kernelschema/runtime/__init__.py": {
       "mode": 420,
-      "sha256": "4c98f6be03a1d88861100fc528a61d8c00f4ec3848b2f1b1ce45295f7f8b08e5"
+      "sha256": "e4f2cea7efd1fb39808c0ca4748669e81380729a369abece2aad97aa1561eaca"
     },
     "kernelschema/runtime/_local.py": {
       "mode": 420,
@@ -300,7 +316,7 @@
     },
     "kernelschema/runtime/claude.py": {
       "mode": 420,
-      "sha256": "c5f23d789b70d3f1bf8d42210d17ab1c9980dd966cbe0b7c4acb22593eb70ad9"
+      "sha256": "82b9173c932b32e9e802f79d802768a4427f4ddafcf2449e82c92812b853d0e8"
     },
     "kernelschema/runtime/profiles/README.md": {
       "mode": 420,
@@ -324,7 +340,7 @@
     },
     "kernelschema/writing.py": {
       "mode": 420,
-      "sha256": "d62899885264d22da7bf32e96698ae69c519f2ad9e4453a8294d66ddddf665c9"
+      "sha256": "606d44a79972e1a35a8f9ea2e291caebbc0a49e2948c231e9f5b3fc176736f61"
     },
     "pyproject.toml": {
       "mode": 420,

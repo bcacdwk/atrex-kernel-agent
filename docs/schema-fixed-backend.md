@@ -161,6 +161,10 @@ therefore leaves comparison unselected and can complete qualified unpromoted C.
 
 ## A6 seam
 
+The [finite dynamic workflow](schema-dynamic-workflow.md) uses the explicit
+stage handoff on the same native workspace. Empty selection parameters keep
+this fixed backend and its zero-planner behavior.
+
 A6 can consume `FixedController.execute()` / `Backend.execute(context)` and the
 unchanged public result. It must settle/close the old transaction, build a new
 immutable request for changed R or mode, and connect its original parent via

@@ -85,8 +85,9 @@ def implementation(profile):
 
 class FixedWorkflow:
     """Retain the original Light Workflow and ManagedCampaign objects."""
-    def __init__(self, selection, modules, *, context=None, supplied_services=None, continuing=None):
+    def __init__(self, selection, modules, *, context=None, supplied_services=None, continuing=None, handoff=None):
         self.selection, self.modules, self.context = selection, modules, context
+        self.handoff = handoff
         request = context.request if context else selection.request_document()
         root = context.root if context else Path(selection.document["run_root"])
         profile = context.objects["profile"] if context else Bundle(Path(selection.document["request"]).parent).document(request["backend"]["profile"])
@@ -120,7 +121,7 @@ class FixedWorkflow:
             raise ProtocolError("fixed AKA permits one serial native campaign per workflow")
         campaign = self.native._campaign(request, problem)
         self.controller = FixedController(self.context, campaign, self.execution, self.services,
-            continuing=self.continuing, selection=self.selection.identity if self.selection else None)
+            continuing=self.continuing, selection=self.selection.identity if self.selection else None, handoff=self.handoff)
         campaign.run = self.controller.execute
         campaign.schema_controller = self.controller
         return campaign
@@ -134,7 +135,11 @@ class FixedWorkflow:
 
 def create_workflow(selection, modules):
     """A3's installed default factory, returning the retained Workflow contract."""
-    if selection.document["backend"]["parameters"]:
+    parameters = selection.document["backend"]["parameters"]
+    if set(parameters) == {"dynamic"}:
+        from .dynamic import DynamicWorkflow
+        return DynamicWorkflow(selection, modules)
+    if parameters:
         raise ProtocolError("fixed AKA execution parameters belong to the immutable backend profile parameters.aka")
     return FixedWorkflow(selection, modules)
 

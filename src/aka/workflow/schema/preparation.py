@@ -146,17 +146,48 @@ class SeedLifecycle:
         self._load()
         return self
 
+    @classmethod
+    def handoff(cls, run, engine, owner, previous):
+        """Admit a new immutable Q after the previous native stage is closed.
+
+        Reuse the canonical repository, V0 and cumulative native limits. The
+        previous lifecycle remains immutable history; only explicitly selected
+        new seed bytes become this stage's C0.
+        """
+        from .handoff import validate_handoff
+        self = cls(run, engine, owner)
+        validate_handoff(previous, run, self.campaign)
+        if (run.root / f".runtime/state/{NAMESPACE}.json").exists():
+            return cls.reopen(run, engine, owner)
+        binding = self._binding()
+        from kernelschema.api import open_run
+        old = open_run("implement", previous["run_root"])
+        original = old.load_state(NAMESPACE)
+        if original["binding"]["native"] != binding["native"]:
+            raise ProtocolError("stage handoff cannot change original native policy or reviewers")
+        state = {"binding": binding, "v0": original["v0"], "episodes": {},
+                 "latest": {"episode": previous["episodes"], "binding": binding["seed"]},
+                 "fence": None, "handoff": previous}
+        self._v0(state)
+        self._save(state)
+        return self
+
     def _load(self, *, allow_fenced=False):
         state = self.run.load_state(NAMESPACE)  # Missing/corrupt is never create.
-        if (not isinstance(state, dict) or set(state) != {"binding", "v0", "episodes", "latest", "fence"}
+        if (not isinstance(state, dict) or set(state) not in (
+                {"binding", "v0", "episodes", "latest", "fence"},
+                {"binding", "v0", "episodes", "latest", "fence", "handoff"})
                 or state["binding"] != self._binding()):
             raise ProtocolError("source lifecycle binding changed or is corrupt")
         if state["fence"] and not allow_fenced:
             raise ProtocolError("source lifecycle fenced: " + state["fence"]["reason"])
         entries = state["episodes"]
-        if not isinstance(entries, dict) or set(entries) != {str(i) for i in range(1, len(entries) + 1)}:
+        start = state.get("handoff", {}).get("episodes", 0)
+        if "handoff" in state and state["handoff"] != self.owner.tx.state["binding"].get("handoff"):
+            raise ProtocolError("source handoff differs from its admitted fixed request")
+        if not isinstance(entries, dict) or set(entries) != {str(i) for i in range(start + 1, start + len(entries) + 1)}:
             raise ProtocolError("source episode history is missing or corrupt")
-        previous = {"episode": 0, "binding": state["binding"]["seed"]}
+        previous = {"episode": start, "binding": state["binding"]["seed"]}
         for key, entry in sorted(entries.items(), key=lambda item: int(item[0])):
             if (entry.get("phase") not in {"intent", "ready", "admitted"}
                     or entry.get("intent", {}).get("episode") != int(key)

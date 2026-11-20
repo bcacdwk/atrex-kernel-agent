@@ -63,8 +63,10 @@ class SchemaSelection:
         from kernelschema.materials import validate_request
         request_path = Path(self.document["request"])
         request = validate(loads(request_path.read_bytes()))
-        if request.get("operation") != "implement":
-            raise SchemaUnavailable("AKA Schema selection requires an implement_request")
+        dynamic = self.document["backend"]["parameters"].get("dynamic")
+        initial_design = isinstance(dynamic, dict) and dynamic.get("start") == "design"
+        if request.get("operation") != ("design" if initial_design else "implement"):
+            raise SchemaUnavailable("AKA Schema selection requires implement, or an explicit dynamic design start")
         validate_request(Bundle(request_path.parent), request)
         return request
 
@@ -108,7 +110,14 @@ class SchemaSelection:
         from kernelschema.runtime import ClaudeProfile
         request = self.request_document()
         bundle = Bundle(Path(self.document["request"]).parent)
-        profile = bundle.document(request["backend"]["profile"], "backend_profile")
+        if request["operation"] == "design":
+            fixed = self.document["backend"]["parameters"]["dynamic"].get("implementation")
+            if not isinstance(fixed, dict) or "profile" not in fixed:
+                raise SchemaUnavailable("dynamic design requires an explicit implementation profile")
+            selected = fixed["profile"]
+        else:
+            selected = request["backend"]["profile"]
+        profile = bundle.document(selected, "backend_profile")
         value = profile["parameters"].get("claude")
         if not isinstance(value, dict):
             raise SchemaUnavailable("Schema native profile needs fixed parameters.claude; no default Agent/model is substituted")

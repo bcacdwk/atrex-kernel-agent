@@ -195,7 +195,7 @@ def test_public_source_extra_file_and_expected_C_rejected(task_bundle, tmp_path)
     source = p.put_source("candidate", f["bundle"].source(f["baseline"]))
     p.commit([source])
     (p.root / source["path"]).parent.joinpath("files/solution.json").write_bytes(b"{}")
-    with pytest.raises(ProtocolError, match="extra files"):
+    with pytest.raises(ProtocolError, match="Source payload contains extra"):
         Bundle(p.root).source(source)
     workspace = tmp_path / "native"
     workspace.mkdir()

@@ -110,6 +110,10 @@ class RoleReader:
             if request["id"] not in items:
                 raise PermissionError("material ID is outside this role grant")
             value = items[request["id"]]
+            if "text_alias_of" in value:
+                from kernelschema.runtime import material_text
+                value = {**value, "text": material_text(document, request["id"])}
+                del value["text_alias_of"]  # One-ID reads return its actual granted body.
         elif operation in {"effective", "check"}:
             schema = self.role.run.objects.get("schema")
             if schema is None:

@@ -13,7 +13,8 @@ adapter surface. The default factory
 `aka.workflow.schema.backend:create_workflow` now implements the
 [A5 fixed backend](schema-fixed-backend.md), using A4's exact-source lifecycle
 and native audits. Missing transport qualification produces an explicit blocked
-result. A6 owns the separate planner loop.
+result. The explicit [dynamic selection](schema-dynamic-workflow.md) adds a
+finite design/fixed/one-optimize/followup chain through that same factory.
 
 ## Source installation and provenance
 
@@ -101,7 +102,8 @@ cannot silently remove a caller's selected process isolation.
 
 ## Concrete A4/A5/A6 interfaces
 
-`SchemaSelection.load(path)` verifies the installed release and fixed request.
+`SchemaSelection.load(path)` verifies the installed release and fixed request
+(or the initial design request of an explicit dynamic selection).
 It exposes `document`, `identity`, `source_sha256`, `provenance`,
 `request_document()`, `problem_provider(role="coder")`, `claude_profile()` and
 `backend_factory()`. It allocates no KS run/account and submits no operation.
@@ -202,8 +204,9 @@ A4 owns initial C0 and seed intent/ready/admitted recovery at A1's preparation
 seam. A5 owns subsequent authorized draft installation, original
 `seal_candidate`/evaluation calls, receipt settlement and result publication.
 Neither result conversion method installs C0, seals, evaluates or promotes.
-A6 may consume the same fixed role/material interfaces and call A5's one
-implementation; this module starts no planner or new top-level loop.
+The explicit dynamic workflow consumes these fixed role/material interfaces and
+calls A5's one implementation. The role/session adapters themselves start no
+planner or outer loop.
 
 A4's concrete [source lifecycle](schema-seed-lifecycle.md) now supplies both the
 seed transaction and an `install_result(e, result, authority=...)` helper for A5

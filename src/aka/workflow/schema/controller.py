@@ -31,7 +31,7 @@ from .state import Transactions
 
 
 class FixedController:
-    def __init__(self, run, campaign, execution, services, *, continuing=False, checkpoint=None, selection=None):
+    def __init__(self, run, campaign, execution, services, *, continuing=False, checkpoint=None, selection=None, handoff=None):
         self.run, self.campaign, self.execution, self.services = run, campaign, execution, services
         c = campaign
         if c.framework_baseline != "never" or c.convert_after or c.framework.lower() != "triton":
@@ -54,6 +54,8 @@ class FixedController:
                 "verify_run_timeout", "min_improvement_pct")},
             "services": services.identity(), "source_format": c.module_options.file_system}
         binding["native"]["min_improvement_pct"] = str(c.min_improvement_pct)
+        if handoff is not None:
+            binding["handoff"] = handoff
         self.tx = Transactions(run, binding, continuing=continuing, checkpoint=checkpoint)
         if self.tx.owner.descriptor["limits"]["tokens"] is not None:
             raise UnsupportedError("native no-tools transport cannot enforce finite parent tokens")
@@ -74,7 +76,7 @@ class FixedController:
         self._original_finish = c._finish
         self._original_v0 = c._run_v0_evaluator_with_correctness_prefetch
         c._run_v0_evaluator_with_correctness_prefetch = self.v0_with_prefetch
-        c._ensure_framework_baseline_correctness_guidance = self.prefetch
+        c._ensure_framework_baseline_correctness_guidance = (lambda: None) if handoff else self.prefetch
         c._review_production_candidate = self.production_review
         c._evaluator_directive = lambda: "The fixed Schema Task owns complete evaluation; the host invokes the evaluator."
         # Any legacy helper unexpectedly reaching the unrestricted session path
@@ -188,6 +190,8 @@ class FixedController:
         return value
 
     def v0_with_prefetch(self):
+        if self.tx.state["binding"].get("handoff"):
+            raise ProtocolError("stage handoff cannot repeat the original settled V0")
         labels = tuple(self.campaign._framework_baseline_correctness_reviewers())
         if labels:
             source = self.run.objects["task"]["baseline_source"]
@@ -414,7 +418,10 @@ class FixedController:
                 self.verify_only()
             else:
                 exists = (self.run.root / f".runtime/state/{SOURCE_NAMESPACE}.json").exists()
-                self.sources = (SeedLifecycle.reopen if exists else SeedLifecycle.create)(self.run, self.engine, self)
+                handoff = state["binding"].get("handoff")
+                self.sources = (SeedLifecycle.reopen(self.run, self.engine, self) if exists else
+                    SeedLifecycle.handoff(self.run, self.engine, self, handoff) if handoff else
+                    SeedLifecycle.create(self.run, self.engine, self))
                 while state["phase"] == "running":
                     checkpoint, active = CampaignStore.checkpoint(self.campaign.workspace)
                     last = state["episodes"].get(str(checkpoint.episodes), {})
@@ -423,8 +430,9 @@ class FixedController:
                         state.update(qualified=state["latest"], status="completed", recovery="none", phase="finishing",
                             stop_reason="current exact C qualified; soft performance goal " + current["performance_goal"])
                         break
+                    start = handoff["episodes"] if handoff else 0
                     episode = (active["episode"] if active else checkpoint.episodes
-                        if checkpoint.episodes and not last.get("attempt") else checkpoint.episodes + 1)
+                        if checkpoint.episodes > start and not last.get("attempt") else checkpoint.episodes + 1)
                     outcome = self.sources.run_episode(episode)
                     if state["phase"] == "audit_unknown":
                         break
