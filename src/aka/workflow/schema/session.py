@@ -238,6 +238,7 @@ class RoleSession:
                 "role": role.document["role"], "source_sha256": role.document["source_sha256"],
                 "request_sha256": role.run.request_sha256,
                 "maximum_timeout_ms": maximum,
+                "timeout_ceiling_ms": maximum_timeout_ms,
                 "native_context_resume": False, "process_recovery": "owner_required"})
         except BaseException:
             self.close()

@@ -53,10 +53,11 @@ def main(argv=None):
     intent = remaining()
     if intent is not None:
         from kernelschema.artifacts import durable_write
-        from kernelschema.contracts import jcs
+        from kernelschema.contracts import digest, jcs
         fields = Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split()
         durable_write(Path(intent["native_locator"]["output_directory"]) / "exec-intent.json", jcs({
             "operation_id": intent["operation_id"], "session_id": intent["submission_key"],
+            "locator_sha256": digest(intent["native_locator"]),
             "pid": os.getpid(), "start_ticks": fields[19],
             "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip()}))
         remaining()

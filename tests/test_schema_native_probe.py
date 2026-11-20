@@ -1,16 +1,24 @@
 """Finite native capture through original owners; all model responses synthetic."""
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from kernelschema.api import prepare_run
 from kernelschema.artifacts import durable_write
 from kernelschema.budget import OwnerAccount
-from kernelschema.contracts import jcs, loads
+from kernelschema.contracts import digest, jcs, loads
 from kernelschema.runtime import ClaudeProfile
 from aka.workflow.schema import native_probe
 from aka.workflow.schema.session import native_agent
 from test_schema_optional_module import fixed, fake_runner
+
+
+@pytest.fixture
+def fixed_probe(fixed, tmp_path):
+    return SimpleNamespace(run=prepare_run("implement", request=fixed.run.root / "request.json",
+        out=tmp_path / "probe-run", backend_identity=native_probe.identity(fixed.run.objects["profile"])))
 
 
 def probe_agent(fixed, trace, *, unknown=False, intervals=None):
@@ -30,12 +38,14 @@ def probe_agent(fixed, trace, *, unknown=False, intervals=None):
         intent = loads(Path(env["AKA_SCHEMA_OPERATION_INTENT"]).read_bytes())
         durable_write(Path(intent["native_locator"]["output_directory"]) / "exec-intent.json", jcs({
             "operation_id": intent["operation_id"], "session_id": intent["submission_key"],
+            "locator_sha256": digest(intent["native_locator"]),
             "pid": 999999999, "boot_id": "synthetic CPU process only", "start_ticks": "1"}))
         return original(command, cwd=cwd, timeout=timeout, env=env)
     return native_agent(profile, process_runner=run)
 
 
-def test_probe_retains_two_original_calls_and_never_replays(fixed, tmp_path):
+def test_probe_retains_two_original_calls_and_never_replays(fixed_probe, tmp_path):
+    fixed = fixed_probe
     trace = []
     agent = probe_agent(fixed, trace)
     try:
@@ -50,7 +60,8 @@ def test_probe_retains_two_original_calls_and_never_replays(fixed, tmp_path):
         changed = dict(value["roles"]["coder"])
         changed["input"] = value["roles"]["reviewer"]["input"]
         with pytest.raises(ValueError, match="locator mismatch"):
-            native_probe.validate_capture(fixed.run.bundle, changed, agent.schema_adapter.profile, "coder")
+            native_probe.validate_capture(fixed.run.bundle, changed, agent.schema_adapter.profile, "coder",
+                scope_timeout_ms=value["scope_timeout_ms"])
         again = native_probe.capture(fixed.run, agent=agent, continuing=True)
         assert again == result and len(trace) == 2
         owner = OwnerAccount.for_context(fixed.run, create=False)
@@ -63,7 +74,8 @@ def test_probe_retains_two_original_calls_and_never_replays(fixed, tmp_path):
         agent.close()
 
 
-def test_probe_lost_return_reuses_original_receipt(fixed, monkeypatch):
+def test_probe_lost_return_reuses_original_receipt(fixed_probe, monkeypatch):
+    fixed = fixed_probe
     from aka.workflow.schema.state import Transactions
     trace, fired = [], []
     original = Transactions.retain_invocation
@@ -85,7 +97,8 @@ def test_probe_lost_return_reuses_original_receipt(fixed, monkeypatch):
         agent.close()
 
 
-def test_probe_unknown_usage_stops_without_signing_or_replacement(fixed):
+def test_probe_unknown_usage_stops_without_signing_or_replacement(fixed_probe):
+    fixed = fixed_probe
     trace = []
     agent = probe_agent(fixed, trace, unknown=True)
     try:

@@ -81,7 +81,7 @@ python -I -m aka.workflow.schema.native_probe \
 
 This finite command uses AKA's original Agent/NativeSession and RoleCalls under
 the same OwnerAccount. It invokes coder once and reviewer once, each bounded by
-the declared profile, an additional 120-second probe ceiling and the original
+the declared profile, the frozen qualification scope ceiling and the original
 owner deadlines, with a native USD threshold no greater than 0.50. It
 never starts an evaluator/GPU job, installs generated code into a business
 draft, or claims Task/fidelity success. The result is
@@ -89,16 +89,42 @@ draft, or claims Task/fidelity success. The result is
 projection and `cli_reported_usd` is CLI reporting, not an independently checked
 bill. A failed role stops the probe; continuation does not retry a paid call.
 
-The probe retains the declared profile and its exact hash. It adds a durable
-120-second ceiling to each original call, narrowed further by the original
-request, parent and native reservation deadlines; its native USD threshold may
-not exceed 0.50. A longer declared business interval can therefore use this
-qualification entry without relabeling a shorter profile. The capture proves
-transport permissions and terminal recovery within the observed interval, not
-an actual run lasting more than 120 seconds. Business RoleSession calls retain
+The new scope's default ceiling is **120000 ms**, narrowed to the declared
+profile when that profile is shorter. A request whose original
+`profile.parameters.claude.timeout_ms` is at least 300000 can explicitly select
+a 300-second qualification ceiling at creation:
+
+```sh
+python -I -m aka.workflow.schema.native_probe \
+  --request "$DEMO/fixed.request.json" --out "$PRIVATE/native-qualification-300s" \
+  --scope-timeout-ms 300000
+python -I -m aka.workflow.schema.native_probe \
+  --continue "$PRIVATE/native-qualification-300s"
+```
+
+An explicit value must be a positive safe integer no greater than the declared
+profile's timeout. The scope identity and original transaction binding freeze
+this value before any call. `--continue` reads that original value, rejects
+`--scope-timeout-ms` overrides and never replaces it with the current default.
+Missing original scope records or bindings fail closed; retain the original
+source and artifacts to settle an older run. There is no migration of admitted
+scopes or retry of a failed paid call.
+
+The probe preserves the exact declared Claude profile and its hash. Each call
+is still narrowed by the original request, parent and native reservation
+deadlines; this option grants no new account, active-time allowance, calls or
+USD budget. The qualification artifact records the scope ceiling and verifies
+it against the original locator and exec evidence. A larger ceiling proves
+only permissions and terminal recovery over the observed execution; it does
+not prove an actual run lasting that long. Business RoleSession calls retain
 the explicitly frozen profile interval and the original owner's tighter limits.
-The probe ceiling is currently fixed, so a profile needing more than 120 seconds
-to return a complete capture remains unqualified through this entry.
+
+The two recorded AKA native trials each stopped after one coder timed out at
+120 seconds; neither called a reviewer or GPU. The latter used a 355182-byte
+input at source `e867333dfcbbce553465635bcf57a9bde842b06f`. Both have unknown
+tokens and CLI-reported USD and produced no qualification. Their original
+requests, accounts, failed results and source artifacts remain unchanged;
+this configurable ceiling adds no real transport qualification.
 
 Successful qualification retains both original NativeInvocations, exact role
 inputs, operation/session IDs and pre-exec PID/boot/start-tick records. Admission

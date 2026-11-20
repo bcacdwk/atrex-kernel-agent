@@ -100,6 +100,14 @@ The first profile requires the plain native Light Agent. Existing sandbox or
 custom Agent selections are rejected explicitly, so enabling this profile
 cannot silently remove a caller's selected process isolation.
 
+Native transport qualification uses the [source delivery probe](schema-source-release.md#capture-the-native-transport).
+Its new-scope ceiling defaults to 120000 ms, narrowed to a shorter declared
+profile; `--scope-timeout-ms` can explicitly select a positive safe integer up
+to that original profile's timeout. The run identity and transaction binding
+freeze it. `--continue` accepts no override and keeps the original ceiling,
+request and account deadlines. The original profile/hash, USD threshold and
+call allowances remain authoritative.
+
 ## Concrete A4/A5/A6 interfaces
 
 `SchemaSelection.load(path)` verifies the installed release and fixed request

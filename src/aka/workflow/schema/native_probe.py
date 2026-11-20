@@ -25,6 +25,17 @@ from .state import Transactions, invocation_from_document
 
 FORMAT = "aka.native.qualification.v1"
 NAMESPACE = "aka-native-qualification"
+DEFAULT_SCOPE_TIMEOUT_MS = 120000
+
+
+def scope_timeout(profile, value=None):
+    """A new scope's ceiling; the declared Claude profile remains unchanged."""
+    declared = ClaudeProfile(**profile["parameters"]["claude"]).timeout_ms
+    if value is None:
+        return min(DEFAULT_SCOPE_TIMEOUT_MS, declared)
+    if type(value) is not int or not 0 < value <= min(declared, 9007199254740991):
+        raise ProtocolError("native probe scope timeout must be a positive safe integer no greater than the declared profile timeout")
+    return value
 
 
 def implementation():
@@ -36,17 +47,21 @@ def implementation():
     return {m.__name__: sha256(Path(m.__file__).read_bytes()) for m in modules}
 
 
-def identity(profile):
+def identity(profile, *, scope_timeout_ms=None):
     from .release import verify_release
     from . import calls, state
     return {"probe": FORMAT, "claude_sha256": digest(profile["parameters"]["claude"]),
+        "scope_timeout_ms": scope_timeout(profile, scope_timeout_ms),
         "implementation": implementation(), "ks_manifest": verify_release()["manifest_sha256"],
         "capture": sha256(Path(__file__).read_bytes()),
         "transactions": {m.__name__: sha256(Path(m.__file__).read_bytes()) for m in (calls, state)}}
 
 
-def validate_capture(bundle, capture, profile, role):
+def validate_capture(bundle, capture, profile, role, *, scope_timeout_ms):
     """Reinterpret original selected artifacts without accessing old private paths."""
+    if scope_timeout_ms is None:
+        raise ProtocolError("native qualification scope timeout is missing")
+    scope_timeout({"parameters": {"claude": profile.as_dict()}}, scope_timeout_ms)
     invocation = invocation_from_document(loads(bundle.read(capture["invocation"])))
     locator = capture["locator"]
     payload = loads(bundle.read(capture["input"]))
@@ -54,7 +69,9 @@ def validate_capture(bundle, capture, profile, role):
     if (locator["role"] != role or locator["profile"] != NATIVE_PROFILE
             or locator["native_context_resume"] is not False
             or type(locator.get("maximum_timeout_ms")) is not int
-            or not 0 < locator["maximum_timeout_ms"] <= min(profile.timeout_ms, 120000)
+            or not 0 < locator["maximum_timeout_ms"] <= min(profile.timeout_ms, scope_timeout_ms)
+            or type(locator.get("timeout_ceiling_ms")) is not int
+            or locator["timeout_ceiling_ms"] != scope_timeout_ms
             or invocation.session_id != locator["session_id"]
             or sha256(bundle.read(capture["input"])) != locator["input_sha256"]
             or any(payload[k] != locator[k] for k in ("role", "assignment_sha256", "source_sha256"))
@@ -62,6 +79,7 @@ def validate_capture(bundle, capture, profile, role):
             or digest(payload["fixed_assignment"]) != locator["assignment_sha256"]
             or execution["session_id"] != locator["session_id"]
             or execution["operation_id"] != capture["operation_id"]
+            or execution.get("locator_sha256") != digest(locator)
             or type(execution["pid"]) is not int or execution["pid"] <= 0
             or not execution["boot_id"] or not str(execution["start_ticks"]).isdigit()):
         raise ProtocolError("native qualification input/process/role locator mismatch")
@@ -141,6 +159,19 @@ def _capture(context, *, continuing, agent):
     if (context.root / ".runtime/state/aka-fixed-backend.json").exists():
         raise ProtocolError("native qualification requires its own prepared child request, not an admitted business run")
     profile = ClaudeProfile(**context.objects["profile"]["parameters"]["claude"])
+    original = context.anchor.get("implementation", {})
+    ceiling = original.get("scope_timeout_ms")
+    if ceiling is None or original != identity(context.objects["profile"], scope_timeout_ms=ceiling):
+        raise ProtocolError("native probe scope/implementation binding missing or changed; retain original source for settlement")
+    state_path = context.root / f".runtime/state/{NAMESPACE}.json"
+    existing = state_path.exists()
+    prior_paths = (".runtime/state/budget.json", ".runtime/owner-account.json",
+                   ".runtime/aka-native", ".runtime/terminals", "native-qualification-result.json")
+    if not existing and (continuing or context.intents()
+            or any((context.root / name).exists() for name in prior_paths)):
+        raise ProtocolError("original native probe scope state missing; cannot recreate its binding")
+    if existing and context.load_state(NAMESPACE).get("binding") != original:
+        raise ProtocolError("original native probe scope binding missing or changed")
     # Qualification has its own finite policy. Business RoleSession timeouts
     # follow the explicit profile and original owner; they are not probe caps.
     if Decimal(profile.max_budget_usd) > Decimal("0.50"):
@@ -148,18 +179,26 @@ def _capture(context, *, continuing, agent):
     source = context.request["seed"] or context.objects["task"]["starter_source"]
     if context.request["mode"] != "code" or source is None or not context.bundle.source(source):
         raise UnsupportedError("native coder/reviewer probe requires code mode and an explicit nonempty Task source")
-    tx = Transactions(context, identity(context.objects["profile"]), continuing=continuing, namespace=NAMESPACE)
+    tx = Transactions(context, original, continuing=continuing or existing, namespace=NAMESPACE)
     limits = context.objects["profile"]["native_limits"].get("workflow_limits", {})
     if (context.request["budget"]["limits"]["tokens"] is not None
             or tx.owner.descriptor["limits"]["tokens"] is not None or limits.get("tokens") is not None):
         raise UnsupportedError("native probe cannot enforce finite token budgets")
     injected = agent is not None
-    own_agent = native_agent(profile) if agent is None else agent
-    calls = RoleCalls(tx, own_agent)
     state = tx.state
-    probe = state.setdefault("probe", {"roles": {}, "qualification": None, "synthetic": injected})
+    if existing:
+        probe = state.get("probe")
+        if not isinstance(probe, dict) or not {"roles", "qualification", "synthetic"} <= probe.keys():
+            raise ProtocolError("original native probe scope records missing")
+        if any(op.get("maximum_timeout_ms") != ceiling for op in state["operations"].values()):
+            raise ProtocolError("original native probe operation timeout binding missing or changed")
+    else:
+        probe = state["probe"] = {"roles": {}, "qualification": None, "synthetic": injected}
+        tx.save("probe_scope_bound")
     if probe["synthetic"] != injected:
         raise ProtocolError("native probe transport cannot change on continuation")
+    own_agent = native_agent(profile) if agent is None else agent
+    calls = RoleCalls(tx, own_agent)
     try:
         if state["phase"] != "done":
             tx.owner.begin(context.run_id)
@@ -177,7 +216,7 @@ def _capture(context, *, continuing, agent):
                     continue
                 output, _, op, receipt = calls.invoke("native-probe-" + role, role, source,
                     deliveries=(RoleDelivery("native_transport_probe", probe["instruction"], (role,)),),
-                    floor=tx.finish_floor(evaluate=False, review=role == "coder"), maximum_timeout_ms=120000)
+                    floor=tx.finish_floor(evaluate=False, review=role == "coder"), maximum_timeout_ms=ceiling)
                 if not receipt.ok:
                     raise UnsupportedError("original " + role + " probe failed: " + ", ".join(output.permission_errors))
                 execution = loads(read_regular(Path(op["locator"]["output_directory"]), "exec-intent.json")[0])
@@ -188,11 +227,12 @@ def _capture(context, *, continuing, agent):
                     "input": publication.put_bytes("native-input.json", read_regular(Path(op["locator"]["output_directory"]), "role-input.json")[0]),
                     "execution": publication.put_bytes("native-exec.json", jcs(execution))}
                 publication.commit([entry["input"], entry["execution"]])
-                validate_capture(context.bundle, entry, profile, role)
+                validate_capture(context.bundle, entry, profile, role, scope_timeout_ms=ceiling)
                 probe["roles"][role] = entry
                 tx.save("probe_role_captured")
             publication = Publication(context.root)
             value = {"format": FORMAT, "profile": NATIVE_PROFILE, "claude_sha256": digest(profile.as_dict()),
+                "scope_timeout_ms": ceiling,
                 "implementation": implementation(), "synthetic": injected, "roles": probe["roles"],
                 "scope": "native transport only; no Task/GPU/fidelity qualification"}
             probe["qualification"] = publication.put_bytes("native-qualification.json", jcs(value))
@@ -239,13 +279,13 @@ def main(argv=None):
     selection.add_argument("--request", type=Path)
     selection.add_argument("--continue", dest="continuing", type=Path)
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--scope-timeout-ms", type=int,
+        help="new scope's per-call ceiling in ms (default: 120000, narrowed to the declared profile); cannot override --continue")
     args = parser.parse_args(argv)
     if args.continuing:
-        if args.out:
-            parser.error("--out is only for a new request")
+        if args.out or args.scope_timeout_ms is not None:
+            parser.error("--out and --scope-timeout-ms are only for a new request")
         context = open_run("implement", args.continuing)
-        if context.anchor["implementation"] != identity(context.objects["profile"]):
-            raise ProtocolError("native probe implementation changed; retain original source for settlement")
     else:
         if args.out is None:
             parser.error("--out is required for a new request")
@@ -253,7 +293,8 @@ def main(argv=None):
         bundle = Bundle(args.request.resolve().parent)
         request = loads(args.request.read_bytes())
         context = prepare_run("implement", request=args.request, out=args.out,
-            backend_identity=identity(bundle.document(request["backend"]["profile"])))
+            backend_identity=identity(bundle.document(request["backend"]["profile"]),
+                scope_timeout_ms=args.scope_timeout_ms))
     print(jcs(capture(context, continuing=bool(args.continuing))).decode())
 
 

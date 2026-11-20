@@ -35,7 +35,7 @@ def native_admission(context, reference):
         if any(ref not in retained for ref in references(value)):
             raise UnsupportedError("original native input/exec/invocation capture is missing from host-only Materials")
         for role, capture in value["roles"].items():
-            validate_capture(context.bundle, capture, profile, role)
+            validate_capture(context.bundle, capture, profile, role, scope_timeout_ms=value["scope_timeout_ms"])
     except (KeyError, TypeError, ValueError) as error:
         raise UnsupportedError("AKA native qualification lacks valid original transport artifacts: " + str(error)) from error
     return {"status": "pass", "reason": "original AKA native role/profile captures verified"}
