@@ -144,7 +144,8 @@ class LightWorkflow:
         self._check_open()
         if not isinstance(problem, LoadedProblem) or problem.agent is None or problem.initial_source is None or problem.evaluation is None:
             raise TypeError("light Workflow requires explicit public, initial-source and evaluator Problem roles")
-        if problem.initial_source.kind != "sol" and problem.evaluation.runtime_root is None:
+        if (problem.initial_source.kind != "sol" and problem.evaluation.runtime_root is None
+                and problem.evaluation.adapter != "kernelschema-row-softmax-v1"):
             raise ValueError("light Workflow deterministic V0 requires native Atrex-Bench or SOL; use legacy for custom setup")
         evaluation = self._evaluation_settings(request)
         campaign = ManagedCampaign.create(request, problem, self, evaluation)

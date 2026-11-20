@@ -244,12 +244,12 @@ class ManagedCampaign(Campaign):
                 text=saved.files["agent_problem.json"].decode("utf-8")))
         from aka.evaluation.resources import evaluator_harness
         harness = evaluator_harness(self.problem.evaluation)
-        if harness is None:
+        if harness is None and self.problem.evaluation.adapter != "kernelschema-row-softmax-v1":
             raise ValueError("Native V0 requires the frozen Task harness")
         runtime = self.problem_provider.runtime_files(self.problem)
         history = self.candidate_workspace.revision_history(self.workspace, changed_path="kernel.py")
         runtime_files = self._unique_contributions((
-            *public_files, harness, *(runtime if not history else ()),
+            *public_files, *((harness,) if harness is not None else ()), *(runtime if not history else ()),
             WorkspaceFile("CLAUDE.md", source=REPO_ROOT / "reference" / "CLAUDE.md"),
             WorkspaceFile("profile_driver.py", source=profile_driver_script()),
         ))
