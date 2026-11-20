@@ -1877,8 +1877,9 @@ class LongHorizonCampaign:
                 active["phase"] = "preparing"
                 store.save_active(active)
                 prepare_episode(worktree=worktree, active=dict(active))
-                active["phase"] = "exploring"
-                store.save_active(active)
+                if not callable(getattr(prepare_episode, "draft_ready", None)):
+                    active["phase"] = "exploring"
+                    store.save_active(active)
             runtime = worktree.path / RUNTIME_DIR
             journal_path = runtime / "journal.json"
             handoff_path = runtime / "handoff.json"
@@ -1893,10 +1894,18 @@ class LongHorizonCampaign:
                 )
             # Keep control state and Git private; the Agent receives only its
             # persistent draft and submits handoffs through Runtime Journal.
+            before_draft = getattr(prepare_episode, "before_draft", None)
+            if callable(before_draft):
+                before_draft(worktree=worktree, active=dict(active))
             agent_workspace = self.base_campaign.register_runtime_episode(
                 worktree.path, episode=episode, memory_version=memory_version,
                 base_commit=base_commit, branch=worktree.branch,
             )
+            draft_ready = getattr(prepare_episode, "draft_ready", None)
+            if callable(draft_ready):
+                draft_ready(worktree=worktree, active=dict(active), draft=agent_workspace)
+                active["phase"] = "exploring"
+                store.save_active(active)
             prompt = self._prompt(
                 episode=episode,
                 version=memory_version,

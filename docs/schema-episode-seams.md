@@ -34,6 +34,8 @@ their outer owner.
 | `owner.admit(phase="recover", …)` | Before native active-episode recovery. Recovery may re-evaluate/review; it is not assumed free. |
 | `owner.admit(phase="episode", …)` | After native upper-bound checks, before creating a fresh active e or resuming its coder. `active` is present for resume. False starts no new coder. |
 | `prepare_episode(worktree, active)` | After a fresh worktree is linked and checked clean, before its first Git-free draft registration. Also reenters a preparing worktree after interruption. Exploring drafts never invoke it. Its durable preparing phase survives an intervening denial. |
+| `prepare_episode.before_draft(worktree, active)` (optional) | Immediately before native draft registration, including resume. May reject source/controller drift before EpisodeWorkspace can replace an admitted draft. |
+| `prepare_episode.draft_ready(worktree, active, draft)` (optional) | After registration, before any invocation. With this hook the native phase remains preparing until the hook durably admits/verifies the draft. Replay must preserve admitted user progress. |
 | `owner.settled(episode, workspace, attempt)` | Only after native terminal archive/state is durable and active is cleared, or on replay of that terminal. Callback exceptions propagate; replay retries notification without another episode. |
 
 These are synchronous lifecycle reservations/notifications, not a per-call
@@ -68,6 +70,10 @@ it must not infer C from G or from Git HEAD alone. The fixture uses the actual
 not the A4 source/format/recovery protocol. Existing post-commit native recovery
 may produce a sparse attempt; missing fields are not zero usage or evidence
 of missing source. A5 must read the retained native usage/output artifacts.
+
+The implemented A4 owner is documented in [Schema source lifecycle](schema-seed-lifecycle.md).
+It consumes these hooks and the original retained EpisodeWorkspace rather than
+using the fixture's test-only seed callback.
 
 The supported seam is serial use under the outer workflow's original native
 lock and frozen configuration. No concurrent engine, cross-machine restore,

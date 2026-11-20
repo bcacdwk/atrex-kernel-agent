@@ -204,6 +204,11 @@ Neither result conversion method installs C0, seals, evaluates or promotes.
 A6 may consume the same fixed role/material interfaces and call A5's one
 implementation; this module starts no planner or new top-level loop.
 
+A4's concrete [source lifecycle](schema-seed-lifecycle.md) now supplies both the
+seed transaction and an `install_result(e, result, authority=...)` helper for A5
+to accept and persist one authorized A3 result. Sealing, evaluations, fees and
+audits remain with A5.
+
 ## Scope of validation
 
 The CPU tests use actual original Agent/NativeSession/ToolHost,

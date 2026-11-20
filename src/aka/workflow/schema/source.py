@@ -39,9 +39,9 @@ def bind_source(bundle: Bundle, reference: dict, candidate_workspace) -> SourceB
     return SourceBinding(reference, identity, sha256(data), len(data))
 
 
-def freeze_native_source(publication: Publication, workspace: Path, candidate_workspace,
-                         *, revision: str | None = None, expected: dict | None = None) -> SourceBinding:
-    """Snapshot the actual native source, checking bytes AND original mode.
+def read_native_source(workspace: Path, candidate_workspace, *,
+                       revision: str | None = None, expected: dict | None = None) -> RevisionContent:
+    """Read the actual complete native source, checking bytes AND original mode.
 
     solution.json is metadata only. Auxiliary declared/local imported source and
     non-single-file selections fail before any evaluator submission.
@@ -82,6 +82,14 @@ def freeze_native_source(publication: Publication, workspace: Path, candidate_wo
     manifest = source_manifest(data)  # KS owns UTF-8 and canonical Source rules.
     if expected is not None and digest(manifest) != expected["sha256"]:
         raise ProtocolError("native candidate differs from selected public C")
+    return source
+
+
+def freeze_native_source(publication: Publication, workspace: Path, candidate_workspace,
+                         *, revision: str | None = None, expected: dict | None = None) -> SourceBinding:
+    """Publish the same strictly validated native source without rewriting bytes."""
+    source = read_native_source(workspace, candidate_workspace, revision=revision, expected=expected)
+    data = source.files["kernel.py"]
     reference = publication.put_source("candidate", data)
     identity = candidate_workspace.source_identity(source)
     return SourceBinding(reference, identity, sha256(data), len(data))
