@@ -53,6 +53,8 @@ def validate_capture(bundle, capture, profile, role):
     execution = loads(bundle.read(capture["execution"]))
     if (locator["role"] != role or locator["profile"] != NATIVE_PROFILE
             or locator["native_context_resume"] is not False
+            or type(locator.get("maximum_timeout_ms")) is not int
+            or not 0 < locator["maximum_timeout_ms"] <= min(profile.timeout_ms, 120000)
             or invocation.session_id != locator["session_id"]
             or sha256(bundle.read(capture["input"])) != locator["input_sha256"]
             or any(payload[k] != locator[k] for k in ("role", "assignment_sha256", "source_sha256"))
@@ -139,6 +141,10 @@ def _capture(context, *, continuing, agent):
     if (context.root / ".runtime/state/aka-fixed-backend.json").exists():
         raise ProtocolError("native qualification requires its own prepared child request, not an admitted business run")
     profile = ClaudeProfile(**context.objects["profile"]["parameters"]["claude"])
+    # Qualification has its own finite policy. Business RoleSession timeouts
+    # follow the explicit profile and original owner; they are not probe caps.
+    if Decimal(profile.max_budget_usd) > Decimal("0.50"):
+        raise UnsupportedError("native transport qualification requires native USD threshold <=0.50")
     source = context.request["seed"] or context.objects["task"]["starter_source"]
     if context.request["mode"] != "code" or source is None or not context.bundle.source(source):
         raise UnsupportedError("native coder/reviewer probe requires code mode and an explicit nonempty Task source")
@@ -171,7 +177,7 @@ def _capture(context, *, continuing, agent):
                     continue
                 output, _, op, receipt = calls.invoke("native-probe-" + role, role, source,
                     deliveries=(RoleDelivery("native_transport_probe", probe["instruction"], (role,)),),
-                    floor=tx.finish_floor(evaluate=False, review=role == "coder"))
+                    floor=tx.finish_floor(evaluate=False, review=role == "coder"), maximum_timeout_ms=120000)
                 if not receipt.ok:
                     raise UnsupportedError("original " + role + " probe failed: " + ", ".join(output.permission_errors))
                 execution = loads(read_regular(Path(op["locator"]["output_directory"]), "exec-intent.json")[0])

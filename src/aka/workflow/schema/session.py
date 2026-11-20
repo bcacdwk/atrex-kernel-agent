@@ -172,7 +172,7 @@ class RoleSession:
     def __init__(self, agent, role, profile, *, workspace, session_id, output_directory,
                  authorize: Callable[[], bool], record_locator: Callable[[dict], None],
                  remaining_timeout_ms: Callable[[int], int] | None = None,
-                 retain_invocation=None):
+                 retain_invocation=None, maximum_timeout_ms=None):
         if not callable(authorize) or not callable(record_locator):
             raise TypeError("Schema native sessions require owner authorization and locator callbacks")
         try:
@@ -197,6 +197,11 @@ class RoleSession:
             raise PermissionError("fixed Schema request prohibits this native role call")
         if limits["tokens"] is not None:
             raise UnsupportedError("Schema native no-tools profile has no hard token limit")
+        maximum = min(profile.timeout_ms, limits["active_ms"])
+        if maximum_timeout_ms is not None:
+            if type(maximum_timeout_ms) is not int or maximum_timeout_ms <= 0:
+                raise ProtocolError("native call timeout ceiling must be a positive integer")
+            maximum = min(maximum, maximum_timeout_ms)
         self.role, self.profile, self.authorize = role, profile, authorize
         self.workspace = Path(workspace).absolute()
         if self.workspace.resolve(strict=True) != self.workspace:
@@ -208,7 +213,7 @@ class RoleSession:
         self.output_directory.mkdir(parents=True, exist_ok=True)
         input_path = role.retain(self.output_directory)
         environment = {"AKA_SCHEMA_ROLE_SESSION": session_id,
-                       "ATREX_AGENT_TIMEOUT_SECONDS": str(min(profile.timeout_ms, limits["active_ms"]) / 1000)}
+                       "ATREX_AGENT_TIMEOUT_SECONDS": str(maximum / 1000)}
         if profile.auth_mode == "environment_auth":
             config = self.output_directory / "config"
             config.mkdir(exist_ok=True)
@@ -218,7 +223,6 @@ class RoleSession:
         agent.schema_adapter.authorities[session_id] = authorize
         agent.schema_adapter.inputs[session_id] = (input_path, sha256(role.payload))
         if remaining_timeout_ms is not None:
-            maximum = min(profile.timeout_ms, limits["active_ms"])
             agent.schema_adapter.deadlines[session_id] = lambda: remaining_timeout_ms(maximum)
         self._adapter = agent.schema_adapter
         self._session = agent.open_session("claude", self.workspace, session_id=session_id,
@@ -233,6 +237,7 @@ class RoleSession:
                 "assignment_sha256": role.assignment_sha256, "input_sha256": sha256(role.payload),
                 "role": role.document["role"], "source_sha256": role.document["source_sha256"],
                 "request_sha256": role.run.request_sha256,
+                "maximum_timeout_ms": maximum,
                 "native_context_resume": False, "process_recovery": "owner_required"})
         except BaseException:
             self.close()

@@ -129,7 +129,11 @@ the writing reviewer retains the floor as well. These reservations reserve
 capacity without charging nonexistent work. Production delivery and configured
 V0 prefetch reviewers require a larger floor, computed from the native profile's
 explicit `minimum_active_ms`; insufficient configuration is rejected before the
-dynamic chain starts. The workflow does not reserve a fictitious extra operation
+dynamic chain starts. The next fixed request's own limits and native workflow
+limits must also contain that minimum: a large parent or writing allowance cannot
+make a zero-coder implementation request executable. This static policy check
+does not calculate remaining credit; KS still checks the original shared balance
+and writing floor at every actual reservation. The workflow does not reserve a fictitious extra operation
 or create another account to keep this capacity.
 
 ## Stage policy and recovery

@@ -25,8 +25,15 @@ class RoleCalls:
         self.run = transactions.context
         self.profile = ClaudeProfile(**self.run.objects["profile"]["parameters"]["claude"])
 
-    def invoke(self, key, role, source, *, episode=None, deliveries=(), floor=None):
+    def invoke(self, key, role, source, *, episode=None, deliveries=(), floor=None, maximum_timeout_ms=None):
+        if maximum_timeout_ms is not None and (type(maximum_timeout_ms) is not int or maximum_timeout_ms <= 0):
+            raise ProtocolError("native call timeout ceiling must be a positive integer")
         op = self.tx.plan(key, role=role, source=source, episode=episode)
+        if "maximum_timeout_ms" not in op:
+            op["maximum_timeout_ms"] = maximum_timeout_ms
+            self.tx.save("native_timeout_bound")
+        elif op["maximum_timeout_ms"] != maximum_timeout_ms:
+            raise ProtocolError("original native call timeout ceiling changed")
         output = self.run.root / ".runtime/aka-native" / op["id"]
         original = next((i for i in self.run.intents() if i["operation_id"] == op["id"]), None)
         if original:
@@ -52,7 +59,8 @@ class RoleCalls:
             try:
                 session = RoleSession.from_authority(self.agent, context, self.profile,
                     authority=authority, workspace=Path(op["scope"]), session_id=op["session_id"],
-                    output_directory=output, retain_invocation=lambda value: self.tx.retain_invocation(op, value))
+                    output_directory=output, retain_invocation=lambda value: self.tx.retain_invocation(op, value),
+                    maximum_timeout_ms=maximum_timeout_ms)
             except BaseException:
                 if not self.tx.owner.operations(self.run.run_id)[op["id"]]["launched"]:
                     self.tx.owner.release_unstarted(op["id"])

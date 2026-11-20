@@ -27,7 +27,8 @@ from test_schema_backend import CODE, FakeServices, model
 @pytest.fixture
 def dynamic(fixed, tmp_path, monkeypatch):
     def make(*, start="schema", action="none", decision="keep", optimize=True,
-             reviews=("pass",), unknown_tokens=False, mode="code", lose_native=False, planner_limit=2, production=False):
+             reviews=("pass",), unknown_tokens=False, mode="code", lose_native=False, planner_limit=2, production=False,
+             fixed_limits=None, fixed_native_limits=None):
         root = fixed.run.root
         p = Publication(root)
         owner = OwnerAccount.create(tmp_path / "owner.json", owner="synthetic-a6-parent",
@@ -40,12 +41,15 @@ def dynamic(fixed, tmp_path, monkeypatch):
         rules = p.put_json("a6-rules.json", {**rules_doc, "files": sorted([*rules_doc["files"], method["file"]], key=lambda r: r["path"]),
                                             "tools": [*rules_doc["tools"], method["tool"]]})
         old = fixed.run.objects["profile"]
+        if fixed_native_limits is not None:
+            old = {**old, "native_limits": {**old["native_limits"], "workflow_limits": fixed_native_limits}}
         profile = p.put_json("a6-native-profile.json", {**old, "name": "aka", "capabilities": native_capabilities()})
         limits = {"calls": {"planner": 0, "reviewer": 8, "coder": 4, "extract": 0},
                   "evaluator_jobs": 8, "active_ms": 120000, "tokens": None}
+        implementation_limits = fixed_limits if fixed_limits is not None else limits
         seed = p.put_source("a6-explicit-seed", CODE.encode()) if mode == "verify_only" else None
         q = {**fixed.run.request, "request_id": "a6-template", "rules": rules, "mode": mode, "seed": seed,
-             "budget": {"parent": parent, "limits": limits}, "backend": {"name": "aka", "profile": profile}}
+             "budget": {"parent": parent, "limits": implementation_limits}, "backend": {"name": "aka", "profile": profile}}
         qref = p.put_json("a6-template.json", q)
         p.commit([qref])
         durable_write(root / "a6-template.json", jcs(q))

@@ -13,7 +13,7 @@ from aka.workflow.schema.session import native_agent
 from test_schema_optional_module import fixed, fake_runner
 
 
-def probe_agent(fixed, trace, *, unknown=False):
+def probe_agent(fixed, trace, *, unknown=False, intervals=None):
     profile = ClaudeProfile(**fixed.run.objects["profile"]["parameters"]["claude"])
     def transform(events):
         answer = json.loads(events[-1]["result"])
@@ -25,6 +25,8 @@ def probe_agent(fixed, trace, *, unknown=False):
             events[-1].pop("usage")
     original = fake_runner(trace, transform=transform)
     def run(command, *, cwd, timeout, env):
+        if intervals is not None:
+            intervals.append(timeout)
         intent = loads(Path(env["AKA_SCHEMA_OPERATION_INTENT"]).read_bytes())
         durable_write(Path(intent["native_locator"]["output_directory"]) / "exec-intent.json", jcs({
             "operation_id": intent["operation_id"], "session_id": intent["submission_key"],

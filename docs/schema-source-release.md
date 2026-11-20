@@ -11,11 +11,11 @@ unverified.
 | Source | Fixed provenance |
 | --- | --- |
 | Original AKA | <https://github.com/alibaba/atrex-kernel-agent>, base `bf5557ac04f6ff9988901d511cf25e1cbe61a1bc` |
-| AKA integration fork | <https://github.com/bcacdwk/atrex-kernel-agent>, fixed-controller review base `4be322b0635a2c5023077eb6b1308752d9b61996` |
-| KS dependency | <https://github.com/bcacdwk/KernelSchema>, detached gitlink `8e846d7dd6321dc226436ac8fc80fbf569b0965f` |
-| KS selected resource manifest | `src/aka/workflow/schema/release.json`, SHA-256 `94d2457ea5128ecd72d78448abaf489a3ae2c098d370b7748c77101c5bd57af7` |
+| AKA integration fork | <https://github.com/bcacdwk/atrex-kernel-agent>, dynamic final-review input `04fab50d67f37f341fa0eb60f8a1928d65df1d10` |
+| KS dependency | <https://github.com/bcacdwk/KernelSchema>, detached gitlink `1c9e592c6e0ec021f91e17af5a8c39956ce39178` |
+| KS selected resource manifest | `src/aka/workflow/schema/release.json`, SHA-256 `f85aa4e254407d319318520aab49b7a448b4d77dd7a7551baffee490d78fb14e` |
 
-The review base above precedes the accompanying fixes and native probe. A
+The review input above precedes the accompanying final-review changes. A
 published release must identify the final reviewed AKA commit and wheel hashes;
 `0.2.0` alone is not source identity. Do not resume an admitted run on changed
 code. Keep its original wheels, source/resources, private run and parent account
@@ -27,18 +27,28 @@ AKA wheel does not include or grant a license to those repositories. Private
 qualification captures, credentials, author HOME and runtime accounts do not
 belong in a public source archive.
 
+The [capability and pairing index](schema-support-evidence.md) separates the
+CPU engineering paths, the selected transport qualification, and each backend's
+remaining Task and release gates.
+
 ## Install and check
 
 Use one environment and a reviewed checkout; initialize only the selected KS
 gitlink. The original builder stages source ownership and builds wheels from
 sdists, including AKA's existing LICENSE/NOTICE.
 
+Install runtime dependencies before the AKA wheels: the KS editable installation
+supplies `PyYAML>=6.0,<7` and `jsonschema>=4,<5`; Framework/Legacy also require
+`packaging>=23`. Force reinstall the four AKA wheels because their shared
+`0.2.0` version can otherwise leave older bytes installed. `--no-deps` keeps
+that step from replacing the selected KS editable installation.
+
 ```sh
 git -C "$AKA" submodule update --init -- optional/KernelSchema
 python "$AKA/tools/build_distributions.py" --output "$DIST" \
   atrex-aka-framework atrex-aka-legacy atrex-aka-light atrex-aka-schema
-python -m pip install -e "$AKA/optional/KernelSchema"
-python -m pip install "$DIST"/*.whl
+python -m pip install -e "$AKA/optional/KernelSchema" 'packaging>=23'
+python -m pip install --no-deps --force-reinstall "$DIST"/*.whl
 python -I -c 'from aka.workflow.schema.release import verify_release; print(verify_release())'
 python -I -m aka optimize --help
 python -I -m aka.workflow.schema.native_probe --help
@@ -71,12 +81,24 @@ python -I -m aka.workflow.schema.native_probe \
 
 This finite command uses AKA's original Agent/NativeSession and RoleCalls under
 the same OwnerAccount. It invokes coder once and reviewer once, each bounded by
-the declared profile (at most 120 seconds and native USD threshold 0.50). It
+the declared profile, an additional 120-second probe ceiling and the original
+owner deadlines, with a native USD threshold no greater than 0.50. It
 never starts an evaluator/GPU job, installs generated code into a business
 draft, or claims Task/fidelity success. The result is
 `native-qualification-result.json`; `usage` is the original owner receipt
 projection and `cli_reported_usd` is CLI reporting, not an independently checked
 bill. A failed role stops the probe; continuation does not retry a paid call.
+
+The probe retains the declared profile and its exact hash. It adds a durable
+120-second ceiling to each original call, narrowed further by the original
+request, parent and native reservation deadlines; its native USD threshold may
+not exceed 0.50. A longer declared business interval can therefore use this
+qualification entry without relabeling a shorter profile. The capture proves
+transport permissions and terminal recovery within the observed interval, not
+an actual run lasting more than 120 seconds. Business RoleSession calls retain
+the explicitly frozen profile interval and the original owner's tighter limits.
+The probe ceiling is currently fixed, so a profile needing more than 120 seconds
+to return a complete capture remains unqualified through this entry.
 
 Successful qualification retains both original NativeInvocations, exact role
 inputs, operation/session IDs and pre-exec PID/boot/start-tick records. Admission

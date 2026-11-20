@@ -235,6 +235,23 @@ class DynamicWorkflow:
             if (not isinstance(floor, dict) or set(floor) != set(required)
                     or any(type(floor[k]) is not int or floor[k] < required[k] for k in required)):
                 raise UnsupportedError("dynamic writing profile must freeze writing_finish_floor covering the next native stage: " + str(required))
+            # KS applies the writing floor to the writing request and shared
+            # parent at each actual reservation. The next fixed request has its
+            # own immutable request/native ceilings; check those static policy
+            # ceilings before spending on a design it could never implement.
+            # This neither computes remaining credit nor reserves a fake call.
+            for name, limits in (("request", self.fixed["budget"]["limits"]),
+                                 ("native", profile["native_limits"].get("workflow_limits"))):
+                if limits is None:
+                    continue
+                from kernelschema.contracts import limits as validate_limits
+                validate_limits(limits)
+                for key, amount in required.items():
+                    maximum = limits["calls"].get(key) if key in {"planner", "coder", "reviewer", "extract"} else limits.get(key)
+                    if maximum is not None and maximum < amount:
+                        raise UnsupportedError("next fixed " + name + " cannot cover minimum finish " + key)
+                if limits.get("tokens") is not None:
+                    raise UnsupportedError("next fixed " + name + " cannot enforce a finite native token budget")
 
     def _ready(self):
         if self.owner.fences():
