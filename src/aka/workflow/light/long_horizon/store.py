@@ -17,6 +17,61 @@ LIVE_MEMORY_FILE = "memory/live.json"
 
 
 class CampaignStore:
+    @staticmethod
+    def checkpoint(workspace: Path) -> tuple[SupervisorState, dict[str, Any] | None]:
+        """Read an explicit-episode checkpoint without creating a workspace.
+
+        The ordinary supervisor retains its historical tolerant readers. A
+        caller requesting an exact episode must not turn lost accounting into
+        a fresh campaign, or recover a different episode accidentally.
+        """
+        root = Path(workspace).resolve() / RUNTIME_DIR
+        def read(name):
+            try:
+                value = json.loads((root / name).read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                return None
+            if not isinstance(value, dict):
+                raise ValueError(f"Invalid native checkpoint: {name}")
+            return value
+
+        raw = read("state.json")
+        active = read("active_episode.json")
+        if raw is None:
+            if active is not None or any((root / "episodes").glob("*")):
+                raise ValueError("Native accounting is missing; restore the original checkpoint")
+            return SupervisorState(), None
+        for name in ("episodes", "tokens"):
+            if type(raw.get(name)) is not int or raw[name] < 0:
+                raise ValueError(f"Invalid native checkpoint: {name}")
+        attempts = raw.get("attempts")
+        receipts = raw.get("usage_receipts")
+        if not isinstance(attempts, list) or not isinstance(receipts, dict):
+            raise ValueError("Invalid native attempt/usage checkpoint")
+        numbers = []
+        for attempt in attempts:
+            if (not isinstance(attempt, dict) or type(attempt.get("episode")) is not int
+                    or not 1 <= attempt["episode"] <= raw["episodes"]):
+                raise ValueError("Invalid native attempt identity")
+            numbers.append(attempt["episode"])
+        if len(numbers) != raw["episodes"] or sorted(numbers) != list(range(1, len(numbers) + 1)):
+            raise ValueError("Native terminal episode history is incomplete")
+        if any(not isinstance(key, str) or type(value) is not int or value < 0
+               for key, value in receipts.items()):
+            raise ValueError("Invalid native usage receipts")
+        if sum(receipts.values()) > raw["tokens"]:
+            raise ValueError("Native token count is lower than its retained receipts")
+        if active is not None:
+            if (type(active.get("episode")) is not int
+                    or active["episode"] not in {raw["episodes"], raw["episodes"] + 1}
+                    or active["episode"] < 1
+                    or type(active.get("memory_version")) is not int or active["memory_version"] < 1
+                    or any(not isinstance(active.get(name), str) or not active[name]
+                           for name in ("base_commit", "episode_branch", "worktree", "phase"))
+                    or not Path(active["worktree"]).is_absolute()):
+                raise ValueError("Invalid active native episode identity")
+        return SupervisorState.from_dict(raw), active
+
     def __init__(self, workspace: Path, *, candidate_workspace):
         self.candidate_workspace = candidate_workspace
         self.workspace = workspace.resolve()

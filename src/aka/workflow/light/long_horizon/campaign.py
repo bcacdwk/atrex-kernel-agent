@@ -1421,6 +1421,7 @@ class LongHorizonCampaign:
         state: SupervisorState,
         *,
         verifier: GatewayABBAValidator,
+        preserve_preparing: bool = False,
     ) -> tuple[CandidateHandle, dict[str, Any]] | None:
         active = store.load_active()
         if active is None:
@@ -1495,7 +1496,7 @@ class LongHorizonCampaign:
             ):
                 return None
             active["resumed_from_phase"] = phase
-            active["phase"] = "exploring"
+            active["phase"] = "preparing" if preserve_preparing and phase == "preparing" else "exploring"
             active["restart_count"] = int(active.get("restart_count", 0) or 0) + 1
             store.save_active(active)
             print(
@@ -1695,10 +1696,49 @@ class LongHorizonCampaign:
         store.clear_active()
         return None
 
-    def run(self) -> str:
+    def run(self, *, episode: int | None = None, lifecycle=None, prepare_episode=None) -> str:
+        """Run the original supervisor, optionally bounded to one exact episode.
+
+        Lifecycle callbacks are private synchronous admission/terminal seams;
+        they do not own setup, finish, accounting, or recovery. No optional
+        module is imported by the default path. See workflow/schema/bridge.py.
+        """
+        target_episode = episode
+        pending = None
+        if episode is not None:
+            if type(episode) is not int or episode < 1:
+                raise ValueError("episode must be a positive integer")
+            checkpoint, pending = CampaignStore.checkpoint(self.workspace)
+            if pending is not None and pending["episode"] != episode:
+                raise ValueError("A different native episode is active; settle it first")
+            previous = next((item for item in checkpoint.attempts if item["episode"] == episode), None)
+            if previous is not None and pending is None:
+                if lifecycle is not None:
+                    lifecycle.settled(episode=episode, workspace=self.workspace, attempt=dict(previous))
+                return "episode-settled"
+            if previous is None and episode != checkpoint.episodes + 1:
+                raise ValueError("Requested native episode is not the next episode")
+            # Exact-episode callers also gate setup/resume work. In particular,
+            # an exhausted native allowance cannot launch V0 or a reviewer.
+            if pending is None:
+                if self.max_version is not None and max(0, main_adapter.latest_version(self.workspace)) >= self.max_version:
+                    return "budget: max-iters"
+                if self.max_version is None and checkpoint.episodes >= self.max_episodes:
+                    return "max-episodes"
+                if self.token_budget and checkpoint.tokens >= self.token_budget:
+                    return "budget: token-budget"
+        elif lifecycle is not None or prepare_episode is not None:
+            raise ValueError("Explicit lifecycle seams require a target episode")
+        if lifecycle is not None and not lifecycle.admit(
+                phase="prepare", episode=episode, workspace=self.workspace, active=pending):
+            return "external-admission: prepare"
         main_adapter.prepare_campaign(self.base_campaign)
         store = CampaignStore(self.workspace, candidate_workspace=self.base_campaign.candidate_workspace)
         state = store.load_state()
+        if episode is not None:
+            # Freeze zero usage before any active marker/model invocation. A
+            # missing checkpoint on later recovery must never refund work.
+            store.save_state(state)
         if state.episodes == 0 and state.consecutive_without_promotion == 0:
             state.consecutive_without_promotion = main_adapter.restored_stall(
                 self.workspace
@@ -1715,9 +1755,17 @@ class LongHorizonCampaign:
             timeout=self.base_campaign.sandbox_timeout,
             private_reference_dir=self.base_campaign.private_reference_dir,
         )
+        if lifecycle is not None and store.load_active() is not None and not lifecycle.admit(
+                phase="recover", episode=episode, workspace=self.workspace, active=store.load_active()):
+            return "external-admission: recover"
         recovered_episode = self._recover_interrupted(
-            store, state, verifier=verifier
+            store, state, verifier=verifier, preserve_preparing=prepare_episode is not None,
         )
+        if episode is not None and state.episodes >= episode and store.load_active() is None:
+            attempt = next(item for item in state.attempts if item["episode"] == episode)
+            if lifecycle is not None:
+                lifecycle.settled(episode=episode, workspace=self.workspace, attempt=dict(attempt))
+            return "episode-settled"
         runner = self.session_runner or LongSessionRunner(
             agent=self.base_campaign.agent,
             agent_cli=getattr(self.base_campaign, "agent_cli", "claude"),
@@ -1770,9 +1818,17 @@ class LongHorizonCampaign:
                 base_commit = worktree.base_commit
                 episode_mode = self._episode_mode(state, active)
             else:
-                episode = state.episodes + 1
+                next_episode = state.episodes + 1
+                if target_episode is not None and next_episode != target_episode:
+                    raise RuntimeError("Explicit episode boundary was crossed")
+                episode = next_episode
                 episode_mode = self._episode_mode(state)
 
+            if lifecycle is not None and not lifecycle.admit(
+                    phase="episode", episode=episode, workspace=self.workspace,
+                    active=dict(active) if resumed else None):
+                reason = "external-admission: episode"
+                break
 
             if resumed:
                 active.setdefault("mode", episode_mode)
@@ -1803,7 +1859,7 @@ class LongHorizonCampaign:
                     {
                         "episode_branch": worktree.branch,
                         "worktree": str(worktree.path),
-                        "phase": "exploring",
+                        "phase": "preparing" if prepare_episode is not None else "exploring",
                     }
                 )
                 store.save_active(active)
@@ -1814,6 +1870,15 @@ class LongHorizonCampaign:
                         "runtime linking dirtied the episode boundary: "
                         + ", ".join(unexpected)
                     )
+            if prepare_episode is not None and (not resumed or active.get("resumed_from_phase") == "preparing"):
+                # Only a fresh/preparing worktree may receive an external seed.
+                # Keep this durable phase until its owner has finished installing
+                # and validating the exact source, before draft registration.
+                active["phase"] = "preparing"
+                store.save_active(active)
+                prepare_episode(worktree=worktree, active=dict(active))
+                active["phase"] = "exploring"
+                store.save_active(active)
             runtime = worktree.path / RUNTIME_DIR
             journal_path = runtime / "journal.json"
             handoff_path = runtime / "handoff.json"
@@ -1937,6 +2002,12 @@ class LongHorizonCampaign:
                 invocations=result.invocations,
                 output_limit_recoveries=result.output_limit_recoveries,
             )
+            if target_episode is not None:
+                attempt = next(item for item in state.attempts if item["episode"] == target_episode)
+                if lifecycle is not None:
+                    lifecycle.settled(episode=target_episode, workspace=self.workspace, attempt=dict(attempt))
+                reason = "episode-settled"
+                break
             if accepted and memory is not None:
                 target_util = float(getattr(self.base_campaign, "target_util", 0.0))
                 if target_util > 0.0 and main_adapter.peak_util(memory) >= target_util:
