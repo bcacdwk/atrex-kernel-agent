@@ -413,6 +413,7 @@ class LongHorizonCampaign:
     verifier: GatewayABBAValidator | None = None
     session_runner: LongSessionRunner | None = None
     worktree_root: Path | None = None
+    candidate_audit: object | None = None
 
 
     @property
@@ -595,6 +596,8 @@ class LongHorizonCampaign:
         journal_path: Path,
         handoff: EpisodeHandoff,
     ) -> str:
+        if self.candidate_audit is not None:
+            return self.candidate_audit.completion_check(worktree, journal_path, handoff)
         candidate = (
             handoff.candidate_commit if handoff.status == "candidate_ready" else ""
         )
@@ -1053,6 +1056,15 @@ class LongHorizonCampaign:
         verification: VerificationResult | None = None
         accepted = False
         if not violation:
+            if self.candidate_audit is not None:
+                active["schema_qualification"] = self.candidate_audit.qualify(
+                    worktree, candidate_commit, active)
+                # This binding precedes both ABBA and a possible promotion.
+                # Recovery reuses it; model judgments never rewrite history.
+                store.save_active(active)
+                if active["schema_qualification"].get("qualified") is not True:
+                    violation = "fixed Schema candidate qualification is not complete"
+        if not violation:
             active["phase"] = (
                 "verifying"
             )
@@ -1185,6 +1197,9 @@ class LongHorizonCampaign:
         }
         if capture_error:
             attempt["candidate_output_unavailable"] = capture_error
+        if self.candidate_audit is not None:
+            attempt["schema_qualification"] = self.candidate_audit.attempt(active, worktree)
+            attempt["schema_operations"] = self.candidate_audit.usage(active, worktree)
         if getattr(self.base_campaign, "search_coordinate", None) is not None:
             attempt["search"] = dict(self.base_campaign.search_coordinate)
         if recovered_after_supervisor_interruption:
@@ -1529,6 +1544,17 @@ class LongHorizonCampaign:
                 == f"episode {episode}: promote verified long-horizon candidate"
                 and audit_recovery is not None
             )
+            schema_recovered = None
+            if self.candidate_audit is not None and promoted:
+                from .promotion_audit import committed_promotion_audit
+                try:
+                    original_audit = committed_promotion_audit(self.workspace,
+                        episode=episode, base_commit=base_commit, branch=branch,
+                        version=memory_version, candidate_workspace=candidate_workspace)
+                except PromotionAuditUnverifiable:
+                    original_audit = None
+                schema_recovered = self.candidate_audit.recover_promotion(
+                    active, current_revision, original_audit)
             record_path = str(version_record_path(self.workspace, memory_version).relative_to(self.workspace))
             outcome_recorded = (
                 phase in {"recording", "recorded"}
@@ -1564,6 +1590,8 @@ class LongHorizonCampaign:
                     state.consecutive_without_promotion = 0
                     recovered_attempt["promotion_commit"] = current_revision
                     recovered_attempt["promotion_audit"] = audit_recovery
+                    if self.candidate_audit is not None:
+                        recovered_attempt["schema_qualification"] = schema_recovered
                 else:
                     state.consecutive_without_promotion += 1
                     recovered_attempt["outcome_commit"] = current_revision

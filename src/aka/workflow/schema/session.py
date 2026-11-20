@@ -45,6 +45,7 @@ class RestrictedClaudeAdapter(ClaudeAdapter):
         self.authorities = {}
         self.inputs = {}
         self.deadlines = {}
+        self.process_authorities = {}
 
     def build_command(self, prompt, session_id, reasoning_effort, settings):
         if settings:
@@ -84,6 +85,11 @@ class RestrictedClaudeAdapter(ClaudeAdapter):
             bound()  # Original K3 absolute-cutoff check again at native launch.
         if authorize is None or not authorize():
             raise PermissionError("Schema owner denied this actual native call")
+        authority = self.process_authorities.get(key)
+        if authority is not None:
+            environment = {**environment, "KS_BUDGET_AUTHORITY": str(authority.owner.path),
+                "AKA_SCHEMA_OPERATION_INTENT": str(authority.context.root / ".runtime/intents" /
+                    (authority.reservation["operation_id"] + ".json"))}
         yield environment
 
 
@@ -113,8 +119,13 @@ def native_agent(profile: ClaudeProfile, *, process_runner=None, environment=Non
         allowed.add("CLAUDE_CONFIG_DIR")
     selected = {key: value for key, value in original.items() if key in allowed}
     selected.update(CLAUDE_CODE_SAFE_MODE="1", DISABLE_AUTOUPDATER="1", DISABLE_TELEMETRY="1")
+    def unavailable(values):
+        authority = adapter.process_authorities.get(values.get("AKA_SCHEMA_ROLE_SESSION"))
+        if authority is not None and not authority.owner.check_active(authority.reservation):
+            return 130, "original Schema owner paused, fenced or expired"
+        return None
     agent = SchemaNativeAgent(AgentOptions(timeout_seconds=profile.timeout_ms / 1000), registry=registry,
-                              environment=selected, process_runner=process_runner)
+                              environment=selected, process_runner=process_runner, unavailable=unavailable)
     agent.schema_adapter = adapter
     return agent
 
@@ -160,7 +171,8 @@ class RoleSession:
     """
     def __init__(self, agent, role, profile, *, workspace, session_id, output_directory,
                  authorize: Callable[[], bool], record_locator: Callable[[dict], None],
-                 remaining_timeout_ms: Callable[[int], int] | None = None):
+                 remaining_timeout_ms: Callable[[int], int] | None = None,
+                 retain_invocation=None):
         if not callable(authorize) or not callable(record_locator):
             raise TypeError("Schema native sessions require owner authorization and locator callbacks")
         try:
@@ -211,6 +223,8 @@ class RoleSession:
         self._adapter = agent.schema_adapter
         self._session = agent.open_session("claude", self.workspace, session_id=session_id,
             environment=environment, output_directory=self.output_directory)
+        if retain_invocation is not None:
+            self._session.record_native_invocation = retain_invocation
         self._invoked = False
         # This callback must durably bind A5's existing operation/reservation.
         try:
@@ -230,9 +244,11 @@ class RoleSession:
         from .authority import NativeCallAuthority
         if not isinstance(authority, NativeCallAuthority) or authority.context != role.run:
             raise ProtocolError("role and native authority must share the same original RunContext")
-        return cls(agent, role, profile, authorize=authority.authorize,
-                   record_locator=authority.record_locator,
-                   remaining_timeout_ms=authority.remaining_timeout_ms, **options)
+        session = cls(agent, role, profile, authorize=authority.authorize,
+                      record_locator=authority.record_locator,
+                      remaining_timeout_ms=authority.remaining_timeout_ms, **options)
+        agent.schema_adapter.process_authorities[session.session_id] = authority
+        return session
 
     def _check_scope(self):
         if self.workspace.is_symlink() or not self.workspace.is_dir() or any(self.workspace.iterdir()):
@@ -317,3 +333,4 @@ class RoleSession:
         self._adapter.authorities.pop(self.session_id, None)
         self._adapter.inputs.pop(self.session_id, None)
         self._adapter.deadlines.pop(self.session_id, None)
+        self._adapter.process_authorities.pop(self.session_id, None)

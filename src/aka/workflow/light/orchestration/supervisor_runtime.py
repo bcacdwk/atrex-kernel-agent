@@ -266,8 +266,9 @@ class SupervisorRuntime:
         self.config = config
         if services is None or workspace_provider is None:
             raise TypeError("Workflow operations require explicitly selected shared modules")
-        from aka.execution.gateway.native_options import audit_summary
-        logging.getLogger(__name__).warning("Agate native option audit: %s", json.dumps(audit_summary(), sort_keys=True))
+        if services.evaluation_input.adapter != "kernelschema-row-softmax-v1":
+            from aka.execution.gateway.native_options import audit_summary
+            logging.getLogger(__name__).warning("Agate native option audit: %s", json.dumps(audit_summary(), sort_keys=True))
         self.agent, self.executor = services.agent, services.executor
         self.acceptance = CandidateGate()
         self.journal_factory = services.journal

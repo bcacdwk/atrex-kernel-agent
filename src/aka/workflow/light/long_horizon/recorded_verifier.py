@@ -76,6 +76,10 @@ zero-submission guarantee. ABBA does not replace the standard full Evaluate requ
 
     def verify(self, workspace: Path, *, base_commit: str, candidate_commit: str,
                changed_paths: list[str]) -> VerificationResult:
+        selected = getattr(self.execute, "schema_comparison", None)
+        if selected is not None:
+            return selected(self, workspace, base_commit=base_commit,
+                candidate_commit=candidate_commit, changed_paths=changed_paths)
         try:
             owner = self.workspace_provider
             candidate = owner.read_source(workspace, revision=candidate_commit)

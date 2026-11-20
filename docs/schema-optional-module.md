@@ -8,12 +8,12 @@ ignored. Original Workflow DTOs, defaults, prompts, native budgets and exports
 are unchanged. A reconstructed launch locks its original selection and cannot
 change the switch or configuration.
 
-This deliverable supplies installation, selection, role context and the native
-adapter surface. It does not implement the A4 seed transaction, A5 fixed loop or
-native audits, or A6 planner loop. The default A5 factory is
-`aka.workflow.schema.backend:create_workflow`; until installed and pinned,
-`--schema` exits with a specific missing-backend diagnostic before booting any
-native service. A3 does not silently run the ordinary optimization workflow.
+This module supplies installation, selection, role context and the native
+adapter surface. The default factory
+`aka.workflow.schema.backend:create_workflow` now implements the
+[A5 fixed backend](schema-fixed-backend.md), using A4's exact-source lifecycle
+and native audits. Missing transport qualification produces an explicit blocked
+result. A6 owns the separate planner loop.
 
 ## Source installation and provenance
 
@@ -80,7 +80,8 @@ The factory's own fixed parameter/qualification policy remains with A5.
 
 ```sh
 aka optimize --repo-root "$AKA" --problem /absolute/bundle \
-  --platform H20 --framework triton --schema \
+  --platform H20 --framework triton --framework-baseline never \
+  --convert-after 0 --schema \
   --schema-config /absolute/selection.json
 
 aka optimize --repo-root "$AKA" --problem /absolute/ordinary-problem \

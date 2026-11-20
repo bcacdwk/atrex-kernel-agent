@@ -93,3 +93,11 @@ def freeze_native_source(publication: Publication, workspace: Path, candidate_wo
     reference = publication.put_source("candidate", data)
     identity = candidate_workspace.source_identity(source)
     return SourceBinding(reference, identity, sha256(data), len(data))
+
+
+def publish_native_source(root, workspace, candidate_workspace, **options):
+    """Publish an exact standalone native binding for host/audit transactions."""
+    publication = Publication(root)
+    binding = freeze_native_source(publication, workspace, candidate_workspace, **options)
+    publication.commit([binding.source])
+    return binding

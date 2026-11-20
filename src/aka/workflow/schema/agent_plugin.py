@@ -1,7 +1,7 @@
 """On-only replacement of the original Agent provider, using its native owner."""
 from aka.agent.plugin import AGENT
 
-name = "schema-agent"
+name = "agent-plugin"
 provide = ("agent",)
 identity_packages = ("aka.workflow.schema", "aka.agent")
 Config = {"type": "object", "properties": {"selection": {"type": "string", "minLength": 1},

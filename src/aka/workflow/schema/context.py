@@ -31,7 +31,7 @@ class RoleContext:
                                    source_roles=source_roles, deliveries=deliveries)
         from dataclasses import asdict
         grant = {"role": role, "source": source, "source_roles": list(source_roles),
-                 "deliveries": [asdict(item) for item in deliveries]}
+                 "deliveries": [{**asdict(item), "roles": list(item.roles)} for item in deliveries]}
         return cls(run, jcs(value), jcs(grant))
 
     @property

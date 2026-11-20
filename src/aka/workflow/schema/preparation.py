@@ -123,8 +123,17 @@ class SeedLifecycle:
         if path.exists() or path.is_symlink():
             raise ProtocolError("source lifecycle already exists; reopen it")
         native, active = CampaignStore.checkpoint(self.workspace)
+        native_root = self.workspace / ".atrex_long_horizon"
+        bootstrap_only = False
+        if native_root.is_dir() and not native_root.is_symlink():
+            from aka.workflow.legacy.public_state import writer_active
+            # The original startup takes its native lease and records immutable
+            # launch metadata before Campaign.run. These files are not V0/work.
+            allowed = {"public-identity.json", "writer-state.json", "checkpoint-context.json"}
+            bootstrap_only = (writer_active(self.workspace) and not run.intents()
+                and all(p.name in allowed and p.is_file() and not p.is_symlink() for p in native_root.iterdir()))
         if (native.episodes or active is not None or self.candidate.current_revision(self.workspace)
-                or (self.workspace / ".atrex_long_horizon").exists()):
+                or native_root.exists() and not bootstrap_only):
             raise ProtocolError("cannot invent a seed for existing native work")
         binding = self._binding()
         run.save_state(NAMESPACE, {"binding": binding, "v0": None, "episodes": {},

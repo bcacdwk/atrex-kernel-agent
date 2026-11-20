@@ -2,7 +2,7 @@
 from aka.task.problem.plugin import PROBLEM
 from .agent_plugin import Config, Defaults
 
-name = "schema-problem"
+name = "problem-plugin"
 provide = ("problem",)
 identity_packages = ("aka.workflow.schema", "aka.task.problem")
 

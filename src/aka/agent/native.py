@@ -395,7 +395,7 @@ class NativeSession:
             resume_supported=self.supports_resume,
             stdout=stdout,
         )
-        return NativeInvocation(
+        result = NativeInvocation(
             exit_status,
             timed_out,
             self._session_id,
@@ -407,3 +407,7 @@ class NativeSession:
             observation_errors,
             resume_usage_qualified,
         )
+        recorder = getattr(self, "record_native_invocation", None)
+        if recorder is not None:
+            recorder(result)
+        return result

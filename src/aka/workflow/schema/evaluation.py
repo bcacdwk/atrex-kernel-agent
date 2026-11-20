@@ -54,8 +54,8 @@ class EvaluationOperation:
         if not self.submission_key or not self.owner or self.reservation.get("owner") != self.owner:
             raise ProtocolError("matching owner/reservation/stable key required")
         ms = self.reservation.get("active_ms")
-        if self.reservation.get("evaluator_jobs") != 1 or type(ms) is not int or not 0 < ms <= 1200000:
-            raise ProtocolError("one admitted evaluator job and positive <=20min limit required")
+        if self.reservation.get("evaluator_jobs") != 1 or type(ms) is not int or ms <= 0:
+            raise ProtocolError("one admitted evaluator job and positive original allowance required")
         object.__setattr__(self, "reservation", _freeze(self.reservation))
         if self.mode not in {"v0", "framework", "schema_task"}:
             raise ProtocolError("operation mode must select full Task evaluation")
@@ -72,7 +72,9 @@ class LocalChannel:
     def prepare(self, staged, operation):
         self.executor.prepare(staged, include_timing=True)
 
-    def submit(self, staged, operation):
+    def submit(self, staged, operation, *, authorize=None):
+        if authorize is not None and not authorize():
+            raise PermissionError("Schema owner denied final local submission")
         return self.executor.submit(staged, **operation)
 
     def worker(self, facts):
@@ -99,8 +101,8 @@ class AgateChannel:
         self.executor.prepare(staged, **operation, profile=self.profile,
                               environment=self.environment, frozen_inputs=self.frozen_inputs, action="execute")
 
-    def submit(self, staged, operation):
-        return self.executor.submit(operation["operation_id"])
+    def submit(self, staged, operation, *, authorize=None):
+        return self.executor.submit(operation["operation_id"], authorize=authorize)
 
     def worker(self, facts):
         return (facts.get("execution") or {}).get("worker")
@@ -114,9 +116,11 @@ class SchemaExecution:
     """
     capabilities = BackendCapabilities(operations=frozenset({OPERATION}), prepared_requests=True, cancellation=True)
 
-    def __init__(self, root: Path, channel):
+    def __init__(self, root: Path, channel, *, authorize=None, launched=None, settled=None, active=None):
         self.root = Path(root).absolute()
         self.channel = channel
+        self.authorize, self.launched, self.settled = authorize, launched, settled
+        self.active = active
         self.resource_identity = ResourceIdentity("kernelschema", str(self.root))
 
     def locator(self, operation_id):
@@ -153,10 +157,31 @@ class SchemaExecution:
             _put_once(staged_path, jcs(staged))
         if command.cancel_event is not None and command.cancel_event.is_set():
             return self._pending("cancelled before submission")
-        self.channel.prepare(staged, operation)
+        already_launched = self.launched is not None and self.launched(operation["operation_id"])
+        if already_launched:
+            try:
+                facts = self.channel.executor.query(operation["operation_id"])
+            except (OSError, ProtocolError):
+                return self._pending("original launch has no recoverable acknowledgement")
+        else:
+            self.channel.prepare(staged, operation)
         if command.cancel_event is not None and command.cancel_event.is_set():
             return self._pending("cancelled after preparation, before submission")
-        facts = self.channel.submit(staged, operation)
+        if not already_launched:
+            from kernelschema.runtime._local import remaining_timeout_ms
+            # Tighten again after preparation/queueing. Persist the exact submitted
+            # allowance; a retry cannot refresh it or change its original key.
+            submitted_path = root / "submission.json"
+            if submitted_path.exists():
+                operation = loads(read_regular(root, "submission.json")[0])
+            else:
+                narrowed = remaining_timeout_ms({**operation["reservation"], "timeout_ms": int(command.timeout * 1000)})
+                operation = {**operation, "reservation": {**operation["reservation"], "active_ms": narrowed}}
+                _put_once(submitted_path, jcs(operation))
+            if self.authorize is not None and not self.authorize(operation["operation_id"]):
+                raise PermissionError("Schema owner denied actual evaluator submission")
+            facts = self.channel.submit(staged, operation,
+                authorize=(lambda: self.active(operation["operation_id"])) if self.active is not None else None)
         deadline = time.monotonic() + command.timeout
         while facts["state"] != "terminal":
             if (command.cancel_event is not None and command.cancel_event.is_set()) or time.monotonic() >= deadline:
@@ -164,6 +189,8 @@ class SchemaExecution:
             time.sleep(.05)
             facts = self.channel.executor.query(operation["operation_id"])
         settled = self.channel.executor.settle(operation["operation_id"], Publication(bundle.root))
+        if self.settled is not None:
+            self.settled(operation["operation_id"], settled, bundle)
         result = dict(operation_id=operation["operation_id"], receipt_id=facts["receipt_id"],
                       report=settled.get("report"), source_binding=envelope["source_binding"],
                       channel=envelope["channel"])
@@ -180,6 +207,17 @@ class SchemaExecution:
         """Recover a retained terminal without preparing against today's workspace."""
         root = Path(self.locator(operation_id)["adapter_root"])
         envelope = loads(read_regular(root, "intent.json")[0])
+        if not (root / "result.json").exists():
+            facts = self.channel.executor.query(operation_id)
+            if facts["state"] != "terminal":
+                raise ProtocolError("original evaluation remains unknown")
+            bundle = Bundle(root / "bundle")
+            settled = self.channel.executor.settle(operation_id, Publication(bundle.root))
+            if self.settled is not None:
+                self.settled(operation_id, settled, bundle)
+            _put_once(root / "result.json", jcs(dict(operation_id=operation_id,
+                receipt_id=facts["receipt_id"], report=settled.get("report"),
+                source_binding=envelope["source_binding"], channel=envelope["channel"])))
         raw = read_regular(root, "result.json")[0]
         return self.consume(envelope, JobResult(0, stdout=raw.decode(), exit_code=0,
                             output_scope="command", transport_status="succeeded"))
@@ -336,7 +374,7 @@ class SchemaEvaluator:
         if mode == "v0" and candidate.source["sha256"] != task["baseline_source"]["sha256"]:
             raise ProtocolError("V0 must measure Task.baseline_source; starter/partial is C0 only")
         publication.commit([binding["task"], binding["scope"], candidate.source])
-        timeout = min(self.configuration.timeout, operation.reservation["active_ms"] // 1000)
+        timeout = min(self.configuration.timeout, operation.reservation["active_ms"] // 1000, 1200)
         if timeout < 1:
             raise UnsupportedExecution("less than one second remains for Task evaluation")
         submitted = dict(operation_id=operation.operation_id, submission_key=operation.submission_key,
