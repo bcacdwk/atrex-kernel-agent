@@ -288,12 +288,48 @@ class PluginRegistry:
 
     def check_lock(self, workspace: Path) -> None:
         lock = workspace / STATE_DIR / "lock.json"
-        if lock.exists() and read_json(lock) != self.snapshot():
-            raise PluginError(
-                "plugin_changed",
-                "discovered plugins changed; restore the locked inputs or use a new workspace",
-            )
+        bindings = []
+        if lock.exists():
+            locked, current = read_json(lock), self.snapshot()
+            if locked != current:
+                bindings = self._locked_python_commands(locked, current)
+            if locked != current:
+                raise PluginError(
+                    "plugin_changed",
+                    "discovered plugins changed; restore the locked inputs or use a new workspace",
+                )
         self._check_workspace_mounts(workspace)
+        for tool, command in bindings:
+            tool["resolved_command"] = command
+
+    def _locked_python_commands(self, locked, current):
+        """Keep a workspace's Python environment when another Python loads it.
+
+        Only an explicit {python} launcher can use the saved interpreter. The
+        caller still compares the entire snapshot before applying any binding.
+        """
+        saved_plugins = locked.get("plugins") if isinstance(locked, dict) else None
+        if not isinstance(saved_plugins, list):
+            return []
+        bindings = []
+        for plugin, saved, observed in zip(self.plugins, saved_plugins, current["plugins"]):
+            commands = saved.get("commands") if isinstance(saved, dict) else None
+            if not isinstance(commands, dict):
+                continue
+            for name, tool in plugin.tools.items():
+                if tool.get("command", [None])[0] != "{python}":
+                    continue
+                argv = commands.get(name)
+                if (not isinstance(argv, list) or not argv or not isinstance(argv[0], str)
+                        or "\0" in argv[0] or not Path(argv[0]).is_absolute()):
+                    continue
+                try:
+                    command = resolve_command(plugin.root, tool, python=argv[0])
+                except PluginError:
+                    continue  # A missing locked interpreter must still fail closed.
+                observed["commands"][name] = list(command)
+                bindings.append((tool, command))
+        return bindings
 
     def _check_workspace_mounts(self, workspace):
         # link_runtime calls check_lock before touching discovery directories.

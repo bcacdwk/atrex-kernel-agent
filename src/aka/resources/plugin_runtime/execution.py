@@ -14,7 +14,7 @@ from pathlib import Path
 from aka.core.plugin_runtime.schema import PluginError, decode_json
 
 
-def _command_argv(root: Path, declaration: dict) -> list[str]:
+def _command_argv(root: Path, declaration: dict, *, python: str | None = None) -> list[str]:
     """Substitute a declared argv without accessing its executable or runtime."""
     command = declaration["command"]
     if (
@@ -24,13 +24,15 @@ def _command_argv(root: Path, declaration: dict) -> list[str]:
     ):
         raise PluginError("invalid_manifest", "command must be a nonempty argv array")
     return [
-        arg.replace("{plugin_root}", str(root)).replace("{python}", sys.executable)
+        arg.replace("{plugin_root}", str(root)).replace(
+            "{python}", sys.executable if python is None else python
+        )
         for arg in command
     ]
 
 
-def resolve_command(root: Path, declaration: dict) -> tuple[str, ...]:
-    argv = _command_argv(root, declaration)
+def resolve_command(root: Path, declaration: dict, *, python: str | None = None) -> tuple[str, ...]:
+    argv = _command_argv(root, declaration, python=python)
     executable = argv[0]
     if "/" in executable:
         # Preserve the venv launcher path: resolving its symlink selects the
