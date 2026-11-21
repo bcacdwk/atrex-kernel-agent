@@ -49,3 +49,26 @@ def test_restored_gateway_path_guard_uses_inherited_policy(restored_shell, tmp_p
                             ATREX_PROTECTED_GATEWAY_STATE_DIR=str(state))
     assert result.returncode == 126 and protected.read_text() == "keep"
     assert "orchestrator-owned" in result.stderr
+
+
+@pytest.mark.parametrize("monitor", [True, False])
+@pytest.mark.parametrize("exit_code", [0, 7, 147])
+def test_restored_python_preserves_status_and_monitor(restored_shell, monitor, exit_code):
+    result = restored_shell(f'''
+set -u
+set {'-m' if monitor else '+m'}
+python3 -c 'raise SystemExit({exit_code})'
+status=$?
+case $- in *m*) mode=on ;; *) mode=off ;; esac
+printf '%s %s\\n' "$status" "$mode"
+''')
+    assert result.returncode == 0
+    assert result.stdout == f"{exit_code} {'on' if monitor else 'off'}\n"
+    assert result.stderr == ""
+
+
+def test_restored_python_failure_preserves_errexit(restored_shell, tmp_path):
+    (tmp_path / "fail.py").write_text("raise SystemExit(7)\n")
+    result = restored_shell("set -em\npython3 fail.py\nprintf 'unexpected followup\\n'")
+    assert result.returncode == 7
+    assert result.stdout == result.stderr == ""

@@ -144,7 +144,7 @@ killall() {
     command killall "$@"
 }
 
-atrex_guarded_python() {
+atrex_guarded_python_command() {
     local executable="$1"
     shift
     local -a original=("$@")
@@ -201,6 +201,25 @@ atrex_guarded_python() {
         return $?
     fi
     command "$executable" "${original[@]}"
+}
+
+atrex_guarded_python() {
+    local atrex_monitor="" atrex_status
+    # SessionControl temporarily stops the shell and its tool client. With
+    # job control enabled, Bash can mistake that stop for command completion.
+    # Wait for termination, then restore the caller's job-control setting.
+    case $- in
+        *m*) atrex_monitor=1; set +m ;;
+    esac
+    if atrex_guarded_python_command "$@"; then
+        atrex_status=0
+    else
+        atrex_status=$?
+    fi
+    if [[ -n "$atrex_monitor" ]]; then
+        set -m
+    fi
+    return "$atrex_status"
 }
 
 atrex_python_code_imports_blocked_module() {
@@ -273,4 +292,4 @@ readonly -f atrex_deny_gateway_action atrex_is_gateway_path
 readonly -f atrex_is_tracked_workspace_path atrex_deny_tracked_delete
 readonly -f screen rm rmdir mv truncate pkill killall
 readonly -f atrex_python_code_imports_blocked_module
-readonly -f atrex_guarded_python python python3 python3.10
+readonly -f atrex_guarded_python_command atrex_guarded_python python python3 python3.10
