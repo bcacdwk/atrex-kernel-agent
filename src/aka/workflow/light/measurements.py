@@ -89,10 +89,18 @@ class RecordedMeasurements:
         measurements = self._measurements(record)
         source = self._source(experiment, record)
         selected = record.evaluation
+        typed_native = bool(identities) and all(
+            identity.method in {"atrex-bench/eval", "atrex-bench/abba"} for identity in identities)
+        environments = {measurement.environment_identity for measurement in measurements}
+        comparable = bool(measurements) and all(
+            measurement.comparability == "comparable" for measurement in measurements) and len(environments) == 1
+        # A terminal typed Eval proves this evaluation's correctness and timing.
+        # Native ABBA additionally proves its within-job schedule below. Neither
+        # needs the worker/image identity required to reuse unrelated records.
+        # Keep the original assessments (and their unknown comparability) intact.
         known = bool(identities) and len(measurements) == len(identities) and all(
             (measurement.validity == "invalid" or measurement.validity == "valid" and measurement.completeness == "complete")
-            and measurement.comparability == "comparable" for measurement in measurements) and len({
-                measurement.environment_identity for measurement in measurements}) == 1
+            for measurement in measurements) and (typed_native or comparable)
         valid = known and all(measurement.validity == "valid" for measurement in measurements)
         trusted_legacy = False
         modes = {identity.parameters.get("mode") for identity in identities}
@@ -138,6 +146,8 @@ class RecordedMeasurements:
             feedback = {key: public[key] for key in ("failures", "actionable_diagnostics", "diagnostics",
                 "feedback_truncation", "diagnostic_truncation", "error", "next_action", "outcome") if key in public}
         result = {**feedback, "all_pass": passed, "correct": passed, "mode": mode,
+                  "comparability": "comparable" if comparable else "unknown",
+                  "environment_identity": next(iter(environments)) if len(environments) == 1 else None,
                   "error": feedback.get("error") or (selected.error if selected is not None else None),
                   "latency_us_by_shape": dict(selected.candidate_latency_us_by_shape) if selected is not None else {},
                   "latency_us_geomean": selected.candidate_latency_us if selected is not None else None,
@@ -178,14 +188,14 @@ class RecordedMeasurements:
                     qualification.append("measurement-incomplete")
                 if measurement.validity == "unknown":
                     qualification.append("measurement-validity-unknown")
-                if not trusted_legacy and measurement.comparability != "comparable":
+                if not (trusted_legacy or typed_native) and measurement.comparability != "comparable":
                     if not measurement.environment_identity:
                         qualification.append("environment-identity-missing")
                     if measurement.identity.dependency_policy == "unknown":
                         qualification.append("dependency-policy-unknown")
                     if measurement.environment_identity and measurement.identity.dependency_policy != "unknown":
                         qualification.append("measurement-not-comparable")
-            if not trusted_legacy and len({item.environment_identity for item in measurements}) > 1:
+            if not (trusted_legacy or typed_native) and len(environments) > 1:
                 qualification.append("environment-identity-mismatch")
             if any(identity.method == "legacy-sol/eval" for identity in identities) and not trusted_legacy:
                 qualification.append("legacy-evaluator-untrusted")
@@ -335,6 +345,8 @@ class SharedMeasurements(RecordedMeasurements):
             agent.pop(key, None)
         if operation in {"evaluate", "same_allocation_abba"}:
             agent["result"]["correct"] = evidence["result"]["correct"]
+            for key in ("comparability", "environment_identity"):
+                agent["result"][key] = evidence["result"][key]
             if "qualification" in evidence["result"]:
                 agent["result"]["qualification"] = evidence["result"]["qualification"]
                 agent["result"]["diagnostics"] = [*agent["result"].get("diagnostics", ()),

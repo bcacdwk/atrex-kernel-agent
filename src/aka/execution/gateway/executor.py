@@ -85,8 +85,10 @@ class GatewayExecutor(GatewayRecoveryMixin):
         # The archive transport is validated by this adapter and the formal
         # submission API. Older discovery responses omit its feature/CUDA fields;
         # preserve those unknown observations without asserting remote support.
-        # Same-allocation ABBA still requires affirmative backend proof.
-        require_supported(support, require_known=command.operation == NATIVE_ABBA)
+        # Agate's typed Eval ABBA extension likewise need not appear in env
+        # discovery. Evaluation requires its complete SDK comparison receipt;
+        # any explicit unsupported dimension still rejects before submission.
+        require_supported(support)
         if type(command.timeout) is not int or command.timeout <= 0:
             raise ValueError("execution timeout must be a positive integer")
         argv = [sys.executable, "-m", "aka.execution.gateway.entrypoint",

@@ -82,7 +82,10 @@ class LegacyExecutor(GatewayRecoveryMixin):
                 filesystem_access=command.filesystem_access))._run(command)
         from aka.execution.environment_query import command_query, require_supported
         support = self._environment_backend().check(command_query(command), discover=False)
-        require_supported(support, require_known=command.operation == NATIVE_ABBA)
+        # Agate's typed Eval ABBA extension is part of its submission protocol;
+        # its env endpoint need not enumerate operations. Evaluation validates
+        # the complete SDK comparison receipt. SSH still needs backend proof.
+        require_supported(support, require_known=command.operation == NATIVE_ABBA and bool(self.request.ssh))
         from aka.execution.gateway.requests import bound_limits
         def observed(result):
             if command.on_observation is not None:

@@ -67,10 +67,17 @@ class GatewayRecoveryMixin:
         self.capabilities.require(command)
         from dataclasses import replace
         from .environment_query import command_query, require_supported
-        from .gateway.requests import NATIVE_ABBA, bound_limits
+        from .gateway.requests import NATIVE_ABBA, bound_limits, prepared_operation
+        if command.operation == NATIVE_ABBA:
+            if command.submission is None:
+                raise UnsupportedExecution("same-allocation ABBA requires an immutable prepared request")
+            import json
+            prepared_operation(json.loads(command.submission), command.operation)
         backend = self._environment_backend() if hasattr(self, "request") else self._environment_backend(command.environment)
         support = backend.check(command_query(command), discover=False)
-        require_supported(support, require_known=command.operation == NATIVE_ABBA)
+        # Replay uses the same Agate typed protocol as first submission. Missing
+        # discovery declarations remain unknown; explicit rejections still fail.
+        require_supported(support, require_known=command.operation == NATIVE_ABBA and bool(backend.ssh))
         def decorate(result):
             return replace(result, environment_snapshot=support.environment,
                            environment_identity=support.environment.identity, environment_support=support)

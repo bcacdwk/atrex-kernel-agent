@@ -1,0 +1,91 @@
+{
+  "detail": {
+    "gpu": "L20D",
+    "vendor": "nvidia",
+    "gpu_model": "NVIDIA L20D",
+    "aliases": [
+      "L20D",
+      "l20d"
+    ],
+    "arch": "sm_103",
+    "sm_count": 148,
+    "total_memory_mb": 274113,
+    "driver_version": "580.105.08",
+    "toolchain": {
+      "torch": "2.9.0+cu130",
+      "cuda": "13.0",
+      "triton": "3.7.1",
+      "gluon": "3.7.1",
+      "cutedsl": "4.6.1",
+      "tilelang": "0.1.13",
+      "nvcc": "13.1.115",
+      "ptxas": "13.1.115"
+    },
+    "source": "cache",
+    "probed_at": "2026-11-21T07:00:59.433253+00:00",
+    "probe_error": null
+  },
+  "provenance": {
+    "sdk-env-detail.json": {
+      "sha256": "44aa293e3a5a0cc503108f737b0eef52ce67e34863798fa1e988e557bbe7a2b0"
+    },
+    "sdk-env-capabilities.json": {
+      "sha256": "55a06dbdbc2056d33404391fd2267986235941109a2d07bf19bc9f460fd01a4d"
+    },
+    "note": "Read-only B41 SDK 0.14.37 responses, 2026-11-21. Only capabilities.profilers omitted (unrelated counter catalog); all other fields unchanged. No worker/image/operation identity supplied by service."
+  },
+  "capabilities": {
+    "gpu": "L20D",
+    "frameworks": {
+      "triton": {
+        "available": true,
+        "version": "3.7.1",
+        "import_path": "triton",
+        "import_error": null
+      },
+      "gluon": {
+        "available": true,
+        "version": "3.7.1",
+        "import_path": "triton.experimental.gluon",
+        "import_error": null
+      },
+      "cutedsl": {
+        "available": true,
+        "version": "4.6.1",
+        "import_path": "cutlass.cute",
+        "import_error": null
+      },
+      "flydsl": {
+        "available": false,
+        "version": null,
+        "import_path": "flydsl",
+        "import_error": "ModuleNotFoundError"
+      },
+      "tilelang": {
+        "available": true,
+        "version": "0.1.13",
+        "import_path": "tilelang",
+        "import_error": null
+      }
+    },
+    "libraries": {
+      "torch": "2.9.0+cu130",
+      "cutlass": "4.6.1",
+      "triton": "3.7.1",
+      "tilelang": "0.1.13",
+      "flash_attn": "unknown",
+      "quack": "0.5.3"
+    },
+    "limits": {
+      "max_source_bytes": 131072,
+      "max_input_source_bytes": 16384,
+      "max_argv_bytes": 131072,
+      "max_job_timeout_s": 10800,
+      "max_job_timeout_s_dev": 1800
+    },
+    "source": "cache",
+    "probed_at": "2026-11-21T07:00:59.433253+00:00",
+    "probe_error": null,
+    "note": null
+  }
+}
