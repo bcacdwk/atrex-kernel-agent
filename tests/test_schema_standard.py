@@ -94,7 +94,50 @@ def test_prepare_only_uses_native_task_without_legacy_gates_or_network(tmp_path,
         repo_root=Path(__file__).resolve().parents[1], workspace=tmp_path / "native", platform="L20D",
         prepare_only=True)
     assert result["status"] == "prepared" and result["exit_code"] is None
+    from aka.contracts.workflow_launch import decode_launch
+    assert decode_launch(result["invocation"]).exact_workspace is True
     assert not (tmp_path / "native").exists()
+
+
+def test_native_preparation_retains_exact_api_workspace_and_cli_derivation(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from aka.contracts.workflow import CampaignRequest, ProblemSource, WorkflowSettings
+    from aka.contracts.workflow_launch import WorkflowLaunch, decode_launch, encode_launch
+    from aka.workflow.legacy.preparation import prepare_request
+    from aka.workflow.legacy import runtime_preparation
+    from aka.execution import binding, environment_query, selection
+    monkeypatch.setattr(runtime_preparation, "prepare_runtime", lambda *args: ("sm_89", "CPU fixture"))
+    monkeypatch.setattr(selection, "execution_scope", lambda: nullcontext(object()))
+    monkeypatch.setattr(binding, "sandbox_executor", lambda *args, **kw: SimpleNamespace(
+        check_environment=lambda query: SimpleNamespace(support="supported")))
+    monkeypatch.setattr(environment_query, "require_supported", lambda support: None)
+    problem = SimpleNamespace(name="operator", public_contract_source="fixture",
+                              evaluation=SimpleNamespace(worker_requirements=None))
+    requested = tmp_path / "selected-exact-directory"
+    request = CampaignRequest(ProblemSource(tmp_path / "task"), requested, "selected-name",
+                              WorkflowSettings(platform="L20D", framework="Triton"))
+    exact = WorkflowLaunch(request, tmp_path, exact_workspace=True)
+    restored = decode_launch(encode_launch(exact))
+    prepared, frameworks = prepare_request(restored, problem)
+    assert prepared.workspace == requested and prepared.name == "selected-name"
+    assert prepared.settings.arch == "sm_89" and frameworks == ("Triton",)
+    ordinary, _ = prepare_request(replace(exact, exact_workspace=False), problem)
+    assert ordinary.workspace == tmp_path / "kernel_opt_operator_triton_l20d"
+    assert ordinary.name == "operator_triton_l20d"
+
+
+def test_native_tool_ignores_inherited_bash_functions_but_rejects_explicit_ones(tmp_path, monkeypatch):
+    from aka.evaluation.tool_requests import request_from_argv
+    from aka.execution import configuration
+    monkeypatch.setattr(configuration, "selected_ssh", lambda: False)
+    config = SimpleNamespace(environment={"BASH_FUNC_module%%": "() { true; }", "KEEP": "yes"},
+                             timeout=60, hardware="L20D")
+    options = dict(workspace=tmp_path, evaluation_input=None, configuration=config,
+                   workspace_provider=None)
+    result = request_from_argv(["--kind", "dev", "--", "true"], **options)
+    assert result.request.environment == {"KEEP": "yes"}
+    with pytest.raises(ValueError, match="invalid --env key"):
+        request_from_argv(["--kind", "dev", "--env", "BASH_FUNC_explicit%%=x", "--", "true"], **options)
 
 
 def test_feedback_retains_failure_and_performance_without_exit_code_pass(tmp_path):

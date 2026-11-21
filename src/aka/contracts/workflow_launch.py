@@ -18,8 +18,11 @@ class WorkflowLaunch:
     restart_arguments: tuple[str, ...] = ()
     provided_settings: tuple[str, ...] | None = None
     provided_runtime: tuple[str, ...] | None = None
+    exact_workspace: bool = False
 
     def __post_init__(self):
+        if type(self.exact_workspace) is not bool:
+            raise TypeError("exact_workspace must be boolean")
         settings, runtime = self.request.settings, self.request.runtime
         if not isinstance(settings, WorkflowSettings) or not isinstance(runtime, CampaignRuntimeSettings):
             raise TypeError("launch requires typed Campaign settings")

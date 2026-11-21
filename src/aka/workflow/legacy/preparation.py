@@ -27,8 +27,11 @@ def prepare_request(launch, problem, *, frozen=False):
     arch, endpoint = prepare_runtime(launch, problem)
     suffix = launch.workspace_suffix or (framework_workspace_suffix(
         settings.framework, settings.platform, settings.optimization_mode) if settings.framework else "")
+    workspace = request.workspace if launch.exact_workspace else base / f"kernel_opt_{problem.name}_{suffix}"
+    if launch.exact_workspace and not settings.framework:
+        raise ValueError("an exact campaign workspace requires one explicit framework")
     if not arch and settings.framework:
-        arch = recorded_workspace_arch(base / f"kernel_opt_{problem.name}_{suffix}")
+        arch = recorded_workspace_arch(workspace)
         if arch:
             print(f"[orchestrator] sandbox arch detection failed; resuming with recorded {arch}",
                   file=sys.stderr, flush=True)
@@ -69,6 +72,6 @@ def prepare_request(launch, problem, *, frozen=False):
         if arch and settings.arch and arch != settings.arch:
             raise ValueError('checkpoint runtime architecture differs from its frozen request')
         return request, frameworks
-    return replace(request, workspace=base / f"kernel_opt_{problem.name}_{suffix}",
-                   name=problem.name + ("_" + suffix if suffix else ""),
+    return replace(request, workspace=workspace,
+                   name=request.name if launch.exact_workspace else problem.name + ("_" + suffix if suffix else ""),
                    settings=replace(settings, arch=arch)), frameworks

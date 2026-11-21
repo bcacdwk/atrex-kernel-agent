@@ -48,6 +48,15 @@ composition. `prepare_only` reads the design, resolves the composition and loads
 the native Task; it does not boot services, call a model or submit a GPU job.
 It does not prove a remote environment or a performance baseline is ready.
 
+The Python API preserves the exact `workspace` path through native startup,
+including its campaign lease and result collection. The ordinary CLI keeps its
+generated `kernel_opt_*` child directory convention. Inherited `BASH_FUNC_*`
+shell functions are ignored when preparing native workload environments;
+explicit `--env` inputs retain their usual validation.
+The native shell guard also retains its helper functions when Claude restores a
+Bash snapshot; ordinary Python tool commands and the existing import/path
+restrictions continue to use the same wrapper.
+
 Task support is the original native Atrex-Bench layout: `reference.py`,
 `input.py` and `shapes.json` under a real checkout containing
 `scripts/run_eval.py` and `src/atrex_bench`. The normal full-evaluation adapter

@@ -139,7 +139,10 @@ def request_from_argv(argv, *, workspace, evaluation_input, configuration, works
         raise ValueError("Dev requires an explicit command")
     artifacts = tuple([] if args.no_sync else args.sync or ["profiles"])
     output = OutputOptions(True if args.inline_output else None, True if args.include_raw_profile else None)
-    host_environment = dict(configuration.environment)
+    # Exported Bash functions are shell startup state, not workload variables.
+    # Keep explicit --env values below subject to the normal strict validation.
+    host_environment = {key: value for key, value in configuration.environment.items()
+                        if not isinstance(key, str) or not key.startswith("BASH_FUNC_")}
     explicit = dict(host_environment)
     for item in args.env:
         if "=" not in item:

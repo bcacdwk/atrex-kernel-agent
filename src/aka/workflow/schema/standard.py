@@ -204,7 +204,7 @@ def implement(*, schema, problem, repo_root, workspace, platform, framework="Tri
     workflow_settings = WorkflowSettings(**values)
     request = CampaignRequest(ProblemSource(problem), workspace, workspace.name,
                               workflow_settings, CampaignRuntimeSettings(**(runtime or {})))
-    invocation = Invocation(encode_launch(WorkflowLaunch(request, workspace.parent)))
+    invocation = Invocation(encode_launch(WorkflowLaunch(request, workspace.parent, exact_workspace=True)))
     selection = select(profile_path(profile), schema=schema, docs=docs, patch_files=patches,
                        variables={"repo_root": str(root)}, owner_account=owner_account,
                        owner_limits=owner_limits, owner_run_id=owner_run_id, workspace=workspace)
