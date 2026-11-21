@@ -24,6 +24,48 @@ GPU sandbox, probe or fixed case-count requirement. Production mode still uses
 the normal AKA production policy when explicitly selected. Existing Light
 patches, including `cuda_manifest` and `light-sandbox`, keep their usual meaning.
 
+## Automatic Schema versions
+
+Add `--schema-iterate` to explicitly enable the shared KernelSchema writing
+loop. Supply a task-description file and a new output directory:
+
+```bash
+aka optimize --repo-root /path/to/atrex-kernel-agent \
+  --problem /path/to/atrex-bench/data/operator \
+  --platform L20D --framework Triton --agent-cli claude --max-iters 4 \
+  --framework-baseline never --convert-after 0 \
+  --schema --schema-iterate --schema-task /materials/task.md \
+  --schema-runtime-profile /materials/claude-profile.json \
+  --schema-rounds 2 --schema-out /path/to/new-schema-run
+```
+
+This begins with design. Add `--schema-path /materials/schema` to implement
+existing files first. `--schema-rounds` counts Schema versions/native campaigns
+(default 2); each campaign retains the original `--max-iters` coding loop,
+settings, runtime, composition patches, tools and evaluator. The writer runs
+between versions, after the native campaign returns. Two versions mean at most
+one optimize call. `keep` stops without another campaign.
+
+Use repeatable `--schema-reference` for selected writing references and optional
+`--schema-objective` / `--schema-environment` files for the current goal and target.
+`--schema-doc` continues to supply coding context. The writing runtime profile
+uses KernelSchema's existing write-only planner; when omitted its usual installed
+Claude CLI defaults apply. Writing has no effect assessment or independent review.
+The native owner flags below remain optional and are passed through unchanged.
+
+The loop lives in `kernelschema.api.iterate`; AKA imports it only in this explicit
+branch. `--schema-out` owns new `implement-NNN` workspaces, writing directories,
+complete stage-result JSON and byte-preserved copies of declared native feedback.
+`iterations.json` lists those stages. Terminal native failures also reach optimize;
+blocked/unsettled or interrupted stages stop. Missing feedback and writing without
+a completed readable Schema stop with the original records retained. An existing
+output directory is rejected; there is no automatic stage replay or continuation.
+The ordinary `--workspace-base` campaign naming applies to the fixed-Schema path;
+automatic versions use their exact workspaces under `--schema-out`.
+
+These entry-point checks are CPU wiring tests. They do not establish a successful
+real model/GPU closed loop, new candidate correctness or a performance improvement.
+
 ## KernelSchema calls AKA
 
 The synchronous Python entry accepts the same raw files and an exact campaign
@@ -183,4 +225,5 @@ describes the legacy manifest verifier.
 not import or inspect the optional Schema module. `--schema-config` explicitly
 selects the historical strict controller for old requests; its old qualification
 rules and receipts remain separate. It is mutually exclusive with
-`--schema-path`.
+`--schema-path` and `--schema-iterate`. Fixed `--schema --schema-path` continues
+to use the original native coding loop without calling a writer.

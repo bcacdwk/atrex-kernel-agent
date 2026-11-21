@@ -183,7 +183,7 @@ def collect_result(workspace, *, exit_code, schema_identity, stop_reason=None):
 def implement(*, schema, problem, repo_root, workspace, platform, framework="Triton",
               agent_cli="claude", max_iters=4, docs=(), profile="light", patches=(),
               settings=None, runtime=None, prepare_only=False, owner_account=None,
-              owner_limits=None, owner_run_id=None):
+              owner_limits=None, owner_run_id=None, _launch=None):
     """Synchronous KS -> AKA entry. Workspace is the exact campaign directory.
 
     ``prepare_only`` loads the original Task and composition without booting
@@ -204,7 +204,14 @@ def implement(*, schema, problem, repo_root, workspace, platform, framework="Tri
     workflow_settings = WorkflowSettings(**values)
     request = CampaignRequest(ProblemSource(problem), workspace, workspace.name,
                               workflow_settings, CampaignRuntimeSettings(**(runtime or {})))
-    invocation = Invocation(encode_launch(WorkflowLaunch(request, workspace.parent, exact_workspace=True)))
+    launch = WorkflowLaunch(request, workspace.parent, exact_workspace=True)
+    if _launch is not None:
+        # The automatic CLI entry retains native provided-field/default semantics
+        # and its original ProblemSource. Only this version's workspace changes.
+        request = replace(_launch.request, workspace=workspace, name=workspace.name)
+        launch = replace(_launch, request=request, exact_workspace=True, restart_arguments=())
+        workflow_settings = request.settings
+    invocation = Invocation(encode_launch(launch))
     selection = select(profile_path(profile), schema=schema, docs=docs, patch_files=patches,
                        variables={"repo_root": str(root)}, owner_account=owner_account,
                        owner_limits=owner_limits, owner_run_id=owner_run_id, workspace=workspace)
@@ -240,6 +247,12 @@ def implement(*, schema, problem, repo_root, workspace, platform, framework="Tri
         # implementation too. Signals/KeyboardInterrupt retain native recovery.
         exit_code, failure = 1, {"type": type(error).__name__, "message": str(error)}
     result = collect_result(workspace, exit_code=exit_code, schema_identity=context["identity"])
+    from aka.execution.recovery import ENVIRONMENT_TEMPFAIL
+    if exit_code == ENVIRONMENT_TEMPFAIL:
+        result["status"] = "blocked"
+        result["stop_reason"] = "native environment unavailable; settle the original workspace"
+    elif exit_code in {130, 143}:
+        result["status"] = "interrupted"
     if failure is not None:
         result["error"] = failure
         result["stop_reason"] = failure["type"]
