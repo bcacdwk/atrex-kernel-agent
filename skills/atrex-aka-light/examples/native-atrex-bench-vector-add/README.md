@@ -6,7 +6,8 @@ Light:
 - `reference.py` defines the authoritative `torch.nn.Module` semantics;
 - `input.py` defines `_make_inputs`, which turns one Shape's `input_kwargs` into CUDA
   tensors passed to `Model.forward`;
-- `shapes.json` maps stable Shape IDs to `Model.__init__` and `_make_inputs` arguments.
+- `shapes.json` maps stable integer-string Shape IDs to `Model.__init__` and
+  `_make_inputs` arguments; the Agate worker uses `int(shape_id)` when seeding inputs.
 
 The example intentionally omits optional `metadata.json`, `roofline.json`, `valid.py`,
 and `agent_problem.json`.

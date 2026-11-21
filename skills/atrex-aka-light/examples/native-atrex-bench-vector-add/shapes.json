@@ -1,5 +1,5 @@
 {
-  "small": {
+  "0": {
     "init_kwargs": {
       "alpha": 1.0
     },
@@ -7,7 +7,7 @@
       "numel": 1024
     }
   },
-  "medium": {
+  "1": {
     "init_kwargs": {
       "alpha": 0.5
     },
@@ -15,7 +15,7 @@
       "numel": 65536
     }
   },
-  "large": {
+  "2": {
     "init_kwargs": {
       "alpha": 2.0
     },
