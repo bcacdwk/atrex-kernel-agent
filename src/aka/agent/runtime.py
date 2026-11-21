@@ -16,7 +16,7 @@ from .backends import (
     PiAdapter,
     QoderAdapter,
     token_usage_from_mapping,
-    token_usage_from_model_usage,
+    token_usage_from_terminal,
 )
 from .codex_ledger import (
     CodexSessionLedgerObserver,
@@ -43,6 +43,7 @@ REASONING_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 def terminal_usage_from_stream(stdout: str) -> TokenUsage:
     """Parse the existing cross-backend terminal contract without event attribution."""
     terminal = TokenUsage.unavailable()
+    conflicting_usage = False
     deltas: list[TokenUsage] = []
     for line in stdout.splitlines():
         line = line.strip()
@@ -55,9 +56,8 @@ def terminal_usage_from_stream(stdout: str) -> TokenUsage:
         if not isinstance(event, Mapping):
             continue
         if event.get("type") in {"result", "turn.completed"}:
-            parsed = token_usage_from_mapping(event.get("usage"))
-            if parsed.total_tokens is None:
-                parsed = token_usage_from_model_usage(event.get("modelUsage"))
+            parsed, conflict = token_usage_from_terminal(event)
+            conflicting_usage |= conflict
             if parsed.total_tokens is not None:
                 terminal = parsed
             continue
@@ -68,6 +68,8 @@ def terminal_usage_from_stream(stdout: str) -> TokenUsage:
         parsed = token_usage_from_mapping(usage)
         if parsed.total_tokens is not None:
             deltas.append(parsed)
+    if conflicting_usage:
+        return TokenUsage.unavailable()
     if terminal.total_tokens is not None:
         return terminal
     fallback = sum_token_usages(deltas)

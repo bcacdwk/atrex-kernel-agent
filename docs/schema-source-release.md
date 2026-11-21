@@ -12,8 +12,8 @@ unverified.
 | --- | --- |
 | Original AKA | <https://github.com/alibaba/atrex-kernel-agent>, base `bf5557ac04f6ff9988901d511cf25e1cbe61a1bc` |
 | AKA integration fork | <https://github.com/bcacdwk/atrex-kernel-agent>, dynamic final-review input `04fab50d67f37f341fa0eb60f8a1928d65df1d10` |
-| KS dependency | <https://github.com/bcacdwk/KernelSchema>, detached gitlink `7d5fb60cf1d6f9ef7cf63dff757250bb4f614ab1` |
-| KS selected resource manifest | `src/aka/workflow/schema/release.json`, SHA-256 `0ac0141bac462dfaafa07c66bb44d3db1b215c8a12f6d9e73e75eb99a3f34a00` |
+| KS dependency | <https://github.com/bcacdwk/KernelSchema>, detached gitlink `77ad741ca5b088d24f4cd23018eb0efcd491f15f` |
+| KS selected resource manifest | `src/aka/workflow/schema/release.json`, SHA-256 `10bf642db61b25797ba0cc8485ce646f5374bfa98faea01cdcb01610b7bc781b` |
 
 The review input above precedes the accompanying final-review changes. A
 published release must identify the final reviewed AKA commit and wheel hashes;
@@ -82,12 +82,26 @@ python -I -m aka.workflow.schema.native_probe \
 This finite command uses AKA's original Agent/NativeSession and RoleCalls under
 the same OwnerAccount. It invokes coder once and reviewer once, each bounded by
 the declared profile, the frozen qualification scope ceiling and the original
-owner deadlines, with a native USD threshold no greater than 0.50. It
+owner deadlines, with the exact profile's native USD stopping threshold. It
 never starts an evaluator/GPU job, installs generated code into a business
 draft, or claims Task/fidelity success. The result is
 `native-qualification-result.json`; `usage` is the original owner receipt
 projection and `cli_reported_usd` is CLI reporting, not an independently checked
 bill. A failed role stops the probe; continuation does not retry a paid call.
+
+`max_budget_usd` defaults to `"0.50"` and accepts an explicit positive finite
+decimal string, for example `"2.00"`. It uses the CLI's `--max-budget-usd` flag;
+the CLI may exceed this threshold before stopping. It is not a hard dollar
+ceiling or a separate owner currency balance. A changed threshold requires a
+new explicit request/profile and qualification scope on the original parent;
+it cannot revise an admitted scope or retry its failed role.
+
+When a terminal reports zero aggregate tokens but positive model usage or cost,
+the invocation and owner receipt report unknown total tokens. The raw aggregate,
+model components and cost remain in the original stdout; component sums or
+assistant events do not substitute for a complete total. Consistent zero usage
+remains zero. A budget-exhausted terminal remains failed even if an assistant
+message contains a parseable role output.
 
 The new scope's default ceiling is **120000 ms**, narrowed to the declared
 profile when that profile is shorter. A request whose original

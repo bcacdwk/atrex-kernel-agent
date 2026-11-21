@@ -1,6 +1,6 @@
 {
   "aka_base_commit": "c984d141145d31795514579db213413a1bbb0775",
-  "commit": "7d5fb60cf1d6f9ef7cf63dff757250bb4f614ab1",
+  "commit": "77ad741ca5b088d24f4cd23018eb0efcd491f15f",
   "files": {
     "DESIGN_SCHEMA.md": {
       "mode": 420,
@@ -324,7 +324,7 @@
     },
     "kernelschema/runtime/claude.py": {
       "mode": 420,
-      "sha256": "6df1e6522f0f6947ea84beacbbbdf95b51fb3744420c7d53894a8d085fab20f3"
+      "sha256": "b2f39adf72ee4a8c2c5189001fcb3651f3aabb53503d090ce039a1394c6f531b"
     },
     "kernelschema/runtime/profiles/README.md": {
       "mode": 420,

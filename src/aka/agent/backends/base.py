@@ -6,6 +6,7 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from ..markers import phase_marker_receipts
@@ -67,6 +68,41 @@ def token_usage_from_model_usage(model_usage: object) -> TokenUsage:
     return sum_token_usages(
         [token_usage_from_mapping(value) for value in model_usage.values()]
     )
+
+
+def token_usage_from_terminal(event: Mapping) -> tuple[TokenUsage, bool]:
+    """Return usage and whether a zero aggregate contradicts native facts.
+
+    Preserve raw reports in the invocation. Neither model components nor
+    assistant deltas establish a replacement total for a contradictory report.
+    """
+    aggregate = token_usage_from_mapping(event.get("usage"))
+    model_usage = event.get("modelUsage")
+
+    def positive_cost(value):
+        if isinstance(value, bool) or value is None:
+            return False
+        try:
+            number = Decimal(str(value))
+            return number.is_finite() and number > 0
+        except InvalidOperation:
+            return False
+
+    if aggregate.total_tokens == 0:
+        positive = positive_cost(event.get("total_cost_usd"))
+        models = model_usage.values() if isinstance(model_usage, Mapping) else ()
+        for row in models:
+            if not isinstance(row, Mapping):
+                continue
+            usage = token_usage_from_mapping(row)
+            positive |= positive_cost(row.get("costUSD")) or any((value or 0) > 0 for value in (
+                usage.input_tokens, usage.output_tokens, usage.cache_read_tokens,
+                usage.cache_write_tokens, usage.total_tokens))
+        if positive:
+            return TokenUsage.unavailable(), True
+    if aggregate.total_tokens is None:
+        aggregate = token_usage_from_model_usage(model_usage)
+    return aggregate, False
 
 
 def toml_config_value(value: object) -> str:
@@ -306,14 +342,14 @@ class ClaudeLikeAdapter(AgentBackendAdapter):
     ) -> tuple[tuple[NormalizedAgentEvent, ...], TokenUsage]:
         normalized: list[NormalizedAgentEvent] = []
         terminal = TokenUsage.unavailable()
+        conflicting_usage = False
         sequence = 0
         seen_usage_message_ids: set[str] = set()
         for event in _json_events(stdout):
             event_type = event.get("type")
             if event_type == "result":
-                terminal = token_usage_from_mapping(event.get("usage"))
-                if terminal.total_tokens is None:
-                    terminal = token_usage_from_model_usage(event.get("modelUsage"))
+                terminal, conflict = token_usage_from_terminal(event)
+                conflicting_usage |= conflict
                 if terminal.total_tokens is not None:
                     normalized.append(
                         NormalizedAgentEvent(
@@ -357,6 +393,9 @@ class ClaudeLikeAdapter(AgentBackendAdapter):
                     )
                 )
                 sequence += 1
+        if conflicting_usage:
+            retained = [event for event in normalized if event.kind != "terminal_usage"]
+            return tuple(replace(event, sequence=index) for index, event in enumerate(retained)), TokenUsage.unavailable()
         if terminal.total_tokens is None:
             deltas = [
                 event.usage

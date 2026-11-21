@@ -41,9 +41,9 @@ def scope_timeout(profile, value=None):
 def implementation():
     from . import session, stdin_exec
     from aka.agent import native, provider, runtime
-    from aka.agent.backends import claude
+    from aka.agent.backends import base, claude
     from aka.agent.execution import process
-    modules = (session, stdin_exec, native, provider, runtime, claude, process)
+    modules = (session, stdin_exec, native, provider, runtime, base, claude, process)
     return {m.__name__: sha256(Path(m.__file__).read_bytes()) for m in modules}
 
 
@@ -172,10 +172,8 @@ def _capture(context, *, continuing, agent):
         raise ProtocolError("original native probe scope state missing; cannot recreate its binding")
     if existing and context.load_state(NAMESPACE).get("binding") != original:
         raise ProtocolError("original native probe scope binding missing or changed")
-    # Qualification has its own finite policy. Business RoleSession timeouts
-    # follow the explicit profile and original owner; they are not probe caps.
-    if Decimal(profile.max_budget_usd) > Decimal("0.50"):
-        raise UnsupportedError("native transport qualification requires native USD threshold <=0.50")
+    # The exact profile freezes the native USD stopping threshold. Scope and
+    # owner limits still bound the finite coder/reviewer transport calls.
     source = context.request["seed"] or context.objects["task"]["starter_source"]
     if context.request["mode"] != "code" or source is None or not context.bundle.source(source):
         raise UnsupportedError("native coder/reviewer probe requires code mode and an explicit nonempty Task source")

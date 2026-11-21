@@ -22,8 +22,9 @@ from test_schema_native_probe import probe_agent
 
 
 def extended_request(fixed, tmp_path, *, probe=False, scope_timeout_ms=None, profile_timeout_ms=240000,
-                     request_active_ms=300000, native_active_ms=180000, executable=None):
-    profile = replace(ClaudeProfile(**fixed.run.objects["profile"]["parameters"]["claude"]), timeout_ms=profile_timeout_ms)
+                     request_active_ms=300000, native_active_ms=180000, executable=None, max_budget_usd="0.50"):
+    profile = replace(ClaudeProfile(**fixed.run.objects["profile"]["parameters"]["claude"]),
+                      timeout_ms=profile_timeout_ms, max_budget_usd=max_budget_usd)
     if executable is not None:
         profile = replace(profile, executable=str(executable), executable_sha256=sha256(executable.read_bytes()))
     limits = {"calls": {"coder": 1, "reviewer": 1, "planner": 0, "extract": 0},
@@ -40,6 +41,31 @@ def extended_request(fixed, tmp_path, *, probe=False, scope_timeout_ms=None, pro
     durable_write(path, jcs(q))
     binding = identity(selected, scope_timeout_ms=scope_timeout_ms) if probe else {"synthetic": "B10 declared native interval"}
     return prepare_run("implement", request=path, out=tmp_path / "extended-run", backend_identity=binding), profile
+
+
+def test_probe_explicit_usd_threshold_keeps_exact_profile_and_finite_calls(fixed, tmp_path):
+    run, profile = extended_request(fixed, tmp_path, probe=True, scope_timeout_ms=600000,
+        profile_timeout_ms=600000, request_active_ms=1250000, native_active_ms=1250000, max_budget_usd="2.00")
+    trace, intervals = [], []
+    agent = probe_agent(SimpleNamespace(run=run), trace, intervals=intervals)
+    try:
+        result = capture(run, agent=agent)
+        assert result["status"] == "completed" and result["synthetic"] is True
+        assert len(trace) == len(intervals) == 2 and all(0 < t <= 600 for t in intervals)
+        for _, command, _ in trace:
+            assert command[command.index("--max-budget-usd") + 1] == "2.00"
+        value = loads(run.bundle.read(result["qualification"]))
+        assert value["claude_sha256"] == digest(profile.as_dict()) and value["scope_timeout_ms"] == 600000
+        assert "aka.agent.backends.base" in value["implementation"]
+        assert result["usage"]["calls"]["coder"] == result["usage"]["calls"]["reviewer"] == 1
+        assert result["usage"]["evaluator_jobs"] == 0
+        assert capture(run, agent=agent, continuing=True) == result and len(trace) == 2
+        run.objects["profile"]["parameters"]["claude"]["max_budget_usd"] = "3.00"
+        with pytest.raises(ProtocolError, match="scope/implementation binding"):
+            capture(run, agent=agent, continuing=True)
+        assert len(trace) == 2
+    finally:
+        agent.close()
 
 
 def test_business_native_session_uses_declared_timeout_and_original_owner(fixed, tmp_path):
