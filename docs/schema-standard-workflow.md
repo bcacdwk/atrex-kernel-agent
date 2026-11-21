@@ -146,12 +146,20 @@ The return value is JSON serializable:
 | `native_state` | Original episode counts, attempts and usage state when present |
 | `artifacts` | Existing kernel/manifest, native result, version records and feedback paths |
 | `feedback_files` | Original version and episode result files whose text a planner can consume |
+| `usage.unsettled` | With an explicit owner account, unresolved operations from this native stage; automatic Schema iteration stops before another writer |
 
 Read `completed` or a version's `PASS` together with its `candidate_commit` and
 performance `measurement_subject` / `measurement_source`. For example,
 `canonical_incumbent_carry_forward` with subject `incumbent` and no candidate
 commit reports the previous baseline; it does not establish a new kernel's
 correctness, measurement or promotion.
+
+When Agate omits environment identity, it remains `null` and cross-record
+comparability remains `unknown`. A current typed native evaluation uses its
+terminal, source-bound, complete measured result; native ABBA also requires the
+original SDK's complete same-allocation A→B→B→A schedule and verdict. These facts
+do not permit cross-record measurement reuse or shape minima across unknown
+environments. Explicitly unsupported operations still stop before submission.
 
 `schema-result.json` retains the complete return value. Repeating the Python call
 with the same completed workspace and request returns that retained result;
@@ -216,7 +224,7 @@ Only the named KernelSchema submodule is initialized. The gitlink and
 [`release.json`](../src/aka/workflow/schema/release.json) record its exact source
 commit; an independent source/editable checkout at that same commit also works.
 This checkout selects
-[`KernelSchema@907c99aa1589bddf73e26079f2304b83d68a8e51`](https://github.com/bcacdwk/KernelSchema/tree/907c99aa1589bddf73e26079f2304b83d68a8e51).
+[`KernelSchema@13efd1554d112d56e4d767ba43b66257b2d75669`](https://github.com/bcacdwk/KernelSchema/tree/13efd1554d112d56e4d767ba43b66257b2d75669).
 The standard raw-file path does not require running legacy release or transport
 qualification. [The optional-module guide](schema-optional-module.md#source-installation-and-provenance)
 describes the legacy manifest verifier.

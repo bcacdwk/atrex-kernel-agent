@@ -133,6 +133,14 @@ class StandardBudget:
                 if not operations[key]["launched"] and not operations[key]["released"]:
                     self.account.release_unstarted(key)
 
+    def unsettled(self):
+        """Read this stage's original operations without ticking or changing them."""
+        operations = self.account._read()["operations"]
+        return sorted(key for key, operation in operations.items()
+            if operation["run_id"] == self.run_id and operation.get("group") == self.group_id
+            and (operation.get("uncertain")
+                 or (not operation["terminated"] and not operation["released"])))
+
 
 class BudgetExecutor:
     """Keep original request preparation, submission and result interpretation."""

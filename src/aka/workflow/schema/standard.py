@@ -258,6 +258,13 @@ def implement(*, schema, problem, repo_root, workspace, platform, framework="Tri
         result["stop_reason"] = failure["type"]
         if failure["type"] in {"BudgetDenied", "ExecutionPending", "EnvironmentUnavailable"}:
             result["status"] = "blocked"
+    config = selection.composition.row("workflow").config
+    if config.get("owner_account"):
+        from .standard_budget import StandardBudget
+        budget = StandardBudget(config["owner_account"], workspace=workspace,
+            identity=context["identity"], limits=config.get("owner_limits"),
+            run_id=config.get("owner_run_id"))
+        result["usage"] = {"scope": "native_stage", "unsettled": budget.unsettled()}
     result["request_identity"] = request_identity
     if workspace.is_dir():
         result["artifacts"]["feedback"] = str(destination)

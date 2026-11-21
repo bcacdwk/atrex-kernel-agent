@@ -1,6 +1,6 @@
 {
   "aka_base_commit": "c984d141145d31795514579db213413a1bbb0775",
-  "commit": "907c99aa1589bddf73e26079f2304b83d68a8e51",
+  "commit": "13efd1554d112d56e4d767ba43b66257b2d75669",
   "files": {
     "DESIGN_SCHEMA.md": {
       "mode": 420,
@@ -176,7 +176,7 @@
     },
     "kernelschema/WRITING.md": {
       "mode": 420,
-      "sha256": "06ebef94e451ea6ac84a884554a407a7d9cf4852e10597c8686c089d8af0d307"
+      "sha256": "2fdbc9effe4e24810622b23650cfac9dec75a4e17bb9fdf00f158c8dffdfb900"
     },
     "kernelschema/__init__.py": {
       "mode": 420,
@@ -192,7 +192,7 @@
     },
     "kernelschema/api.py": {
       "mode": 420,
-      "sha256": "da20165e48676c1c0ba96c2c79849b79d72203c99e82fecca06fb173547c2e19"
+      "sha256": "68205fe9b27376e9bd5734b418f0d7c30aa6ee4215d495dbb937c0aeab33cab0"
     },
     "kernelschema/artifacts.py": {
       "mode": 420,
@@ -204,7 +204,7 @@
     },
     "kernelschema/cli.py": {
       "mode": 420,
-      "sha256": "b61a0319674726456ac7cdc785b3f6f0f28f718dc8182334cbef2426f7584919"
+      "sha256": "3efe3c143a7f9d21c5ded176d402b2384125909dcf2c0564ad28c133760e379b"
     },
     "kernelschema/contracts.py": {
       "mode": 420,
@@ -297,6 +297,10 @@
     "kernelschema/implement/reference.py": {
       "mode": 420,
       "sha256": "5769dbe43813bf49125fadc2fced8abc39cdf2940bb63462cb6d0f1c032b6915"
+    },
+    "kernelschema/iterations.py": {
+      "mode": 420,
+      "sha256": "413e0c47cc396a4ce2aba970772618e001fd31bb945c1c1d7e2515796e9aee50"
     },
     "kernelschema/materials.py": {
       "mode": 420,

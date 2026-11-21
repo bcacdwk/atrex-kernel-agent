@@ -52,7 +52,7 @@ It does not treat a profile filename, source path or hash as permission to read
 that file from a model role.
 
 The selected KS commit is
-[`907c99aa1589bddf73e26079f2304b83d68a8e51`](https://github.com/bcacdwk/KernelSchema/tree/907c99aa1589bddf73e26079f2304b83d68a8e51).
+[`13efd1554d112d56e4d767ba43b66257b2d75669`](https://github.com/bcacdwk/KernelSchema/tree/13efd1554d112d56e4d767ba43b66257b2d75669).
 The manifest's `aka_base_commit` is the historical integration base, not the
 source identity of the current four AKA packages; build them from the matching
 AKA resource checkout as described above.
