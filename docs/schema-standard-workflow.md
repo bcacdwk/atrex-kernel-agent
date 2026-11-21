@@ -224,7 +224,7 @@ Only the named KernelSchema submodule is initialized. The gitlink and
 [`release.json`](../src/aka/workflow/schema/release.json) record its exact source
 commit; an independent source/editable checkout at that same commit also works.
 This checkout selects
-[`KernelSchema@13efd1554d112d56e4d767ba43b66257b2d75669`](https://github.com/bcacdwk/KernelSchema/tree/13efd1554d112d56e4d767ba43b66257b2d75669).
+[`KernelSchema@7be9263fe9a6f5fba97ed7ad7685de13e4d6146f`](https://github.com/bcacdwk/KernelSchema/tree/7be9263fe9a6f5fba97ed7ad7685de13e4d6146f).
 The standard raw-file path does not require running legacy release or transport
 qualification. [The optional-module guide](schema-optional-module.md#source-installation-and-provenance)
 describes the legacy manifest verifier.

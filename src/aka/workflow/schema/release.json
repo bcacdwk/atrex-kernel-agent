@@ -1,6 +1,6 @@
 {
   "aka_base_commit": "c984d141145d31795514579db213413a1bbb0775",
-  "commit": "13efd1554d112d56e4d767ba43b66257b2d75669",
+  "commit": "7be9263fe9a6f5fba97ed7ad7685de13e4d6146f",
   "files": {
     "DESIGN_SCHEMA.md": {
       "mode": 420,
@@ -20,7 +20,7 @@
     },
     "README.md": {
       "mode": 420,
-      "sha256": "cd27b433d6eb55867f840c3bc94750cd9650619cf78f3f715dfb5b4fb7bd97eb"
+      "sha256": "15247143594b48b4c0d1367bee7f4b328347d0a8f9a1a9a8c15bf8bbdd9ca03b"
     },
     "examples/workflows/row_softmax/driver.py": {
       "mode": 420,
