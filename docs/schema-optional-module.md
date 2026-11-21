@@ -1,4 +1,10 @@
-# Optional Schema module (A3 CPU)
+# Optional Schema module
+
+For normal use, follow [Schema assistance in native AKA](schema-standard-workflow.md):
+`--schema --schema-path FILE_OR_DIRECTORY` retains the original Light tools and
+Agate evaluation. It accepts raw design files without the fixed selections or
+qualification steps below. The remainder of this page documents the explicit
+legacy `--schema-config` integration and its historical CPU evidence.
 
 Schema is off by default. The original `aka workflow` / `aka optimize` parser
 accepts `--schema` and `--no-schema`. Only `--schema` imports the optional module,

@@ -525,4 +525,4 @@ def test_original_cli_on_missing_configuration_is_clear_and_zero_work(tmp_path):
         "--problem", str(tmp_path), "--platform", "cpu", "--framework", "triton", "--schema"],
         cwd=tmp_path, capture_output=True, text=True)
     assert child.returncode == 2
-    assert "--schema requires --schema-config" in child.stderr
+    assert "--schema requires --schema-path" in child.stderr
