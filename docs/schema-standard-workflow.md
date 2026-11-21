@@ -57,15 +57,39 @@ The native shell guard also retains its helper functions when Claude restores a
 Bash snapshot; ordinary Python tool commands and the existing import/path
 restrictions continue to use the same wrapper.
 
-Task support is the original native Atrex-Bench layout: `reference.py`,
-`input.py` and `shapes.json` under a real checkout containing
-`scripts/run_eval.py` and `src/atrex_bench`. The normal full-evaluation adapter
-also needs per-shape measured `metadata.json` performance baselines for the
-selected hardware. For a new operator without those measurements, first run
-ordinary `agate eval --candidate reference.py --reference-dir DIR --gpu L20D`
-and retain its actual per-shape timing results. Do not invent baseline numbers.
-The small example in `skills/atrex-aka-light/examples/native-atrex-bench-vector-add`
-supplies the three operator input files, not measured hardware baselines.
+## Native Task and performance baseline
+
+Use the original native Atrex-Bench layout: `reference.py`, `input.py` and
+`shapes.json` under a real Bench checkout containing `scripts/run_eval.py` and
+`src/atrex_bench` source, rather than empty marker files. Shape keys must parse as
+integers, for example `"0"`, `"1"`, `"2"`; the worker uses `int(shape_id)` for
+input seeds. The three files suffice for Task loading. Normal full evaluation
+also requires measured `metadata.json` baselines for every shape on the selected
+hardware, including in leaderboard mode.
+
+For a new operator, use the existing configured Agate CLI to measure its reference:
+
+```sh
+PROBLEM=/path/to/atrex-bench/data/operator
+agate eval --candidate "$PROBLEM/reference.py" --reference-dir "$PROBLEM" \
+  --gpu L20D --shape-shards 1 --bench-iters 30 --job-timeout 600 --no-wait
+# Use the job ID returned above; query the same job until it finishes.
+agate get JOB_ID --wait > /path/to/reference-baseline-job.json
+```
+
+After successful correctness and timing results, save each actual shape latency
+in microseconds at
+`metadata.json → shapes[ID].production_performance.performance_us`.
+Set `perf_gpu` to the measured hardware and retain job ID, input identity and
+measurement provenance with the original receipt. The historical field name
+`production_performance` does not establish that the measured source is a
+production or optimized kernel. A PyTorch reference measurement is a reference
+baseline; do not insert guessed numbers or apply another device's timings.
+
+The [vector-add example](../skills/atrex-aka-light/examples/native-atrex-bench-vector-add/README.md)
+includes the exact JSON format and a recorded L20D reference baseline for its
+three unchanged bf16 shapes. Its provenance and remeasurement instructions
+explain the limits of reusing those values.
 
 ## Results and feedback
 
@@ -80,6 +104,12 @@ The return value is JSON serializable:
 | `native_state` | Original episode counts, attempts and usage state when present |
 | `artifacts` | Existing kernel/manifest, native result, version records and feedback paths |
 | `feedback_files` | Original version and episode result files whose text a planner can consume |
+
+Read `completed` or a version's `PASS` together with its `candidate_commit` and
+performance `measurement_subject` / `measurement_source`. For example,
+`canonical_incumbent_carry_forward` with subject `incumbent` and no candidate
+commit reports the previous baseline; it does not establish a new kernel's
+correctness, measurement or promotion.
 
 `schema-result.json` retains the complete return value. Repeating the Python call
 with the same completed workspace and request returns that retained result;
@@ -113,11 +143,41 @@ these flags, and none of them is needed for an ordinary standard run.
 
 ## Install and legacy compatibility
 
-Install matching Framework, Legacy, Light and optional Schema distributions
-from this checkout using `tools/build_distributions.py`. KernelSchema remains
-a source/editable optional dependency as described in
-[the optional-module guide](schema-optional-module.md). The standard raw-file
-path does not require the legacy release/transport qualification manifest.
+Use Python >=3.11 and the normal [runtime prerequisites](quickstart.md#prerequisites),
+including coordinator `torch`, an authenticated coding CLI and a configured
+evaluation backend. With `AKA` set to this checkout's absolute path, install
+its selected KernelSchema source and all four matching AKA packages in the
+same Python environment:
+
+```sh
+AKA=/path/to/atrex-kernel-agent
+git -C "$AKA" -c http.version=HTTP/1.1 submodule update --init -- optional/KernelSchema
+python -m pip install build 'packaging>=23'
+python -m pip install -e "$AKA/optional/KernelSchema"
+AKA_SCHEMA_DIST=$(mktemp -d "${TMPDIR:-/tmp}/aka-schema-dist.XXXXXX")
+python "$AKA/tools/build_distributions.py" --output "$AKA_SCHEMA_DIST" \
+  atrex-aka-framework atrex-aka-legacy atrex-aka-light atrex-aka-schema
+python -m pip install --no-deps --force-reinstall "$AKA_SCHEMA_DIST"/*.whl
+aka optimize --repo-root "$AKA" --help
+kernelschema implement --help
+```
+
+The editable install provides KernelSchema's declared Python dependencies;
+`packaging` and all four local AKA wheels satisfy the AKA package dependencies.
+`--no-deps` keeps pip from replacing the selected KernelSchema source with an
+index package. It does not install the runtime prerequisites above.
+`--force-reinstall` replaces earlier packages even though all four still use
+version `0.2.0`; that version alone does not identify their source revision.
+Keep those packages and the AKA resource checkout at the same commit.
+
+Only the named KernelSchema submodule is initialized. The gitlink and
+[`release.json`](../src/aka/workflow/schema/release.json) record its exact source
+commit; an independent source/editable checkout at that same commit also works.
+This checkout selects
+[`KernelSchema@907c99aa1589bddf73e26079f2304b83d68a8e51`](https://github.com/bcacdwk/KernelSchema/tree/907c99aa1589bddf73e26079f2304b83d68a8e51).
+The standard raw-file path does not require running legacy release or transport
+qualification. [The optional-module guide](schema-optional-module.md#source-installation-and-provenance)
+describes the legacy manifest verifier.
 
 `--no-schema` and omission of the switch keep the original launch path and do
 not import or inspect the optional Schema module. `--schema-config` explicitly

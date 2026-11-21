@@ -1,6 +1,6 @@
 {
   "aka_base_commit": "c984d141145d31795514579db213413a1bbb0775",
-  "commit": "77ad741ca5b088d24f4cd23018eb0efcd491f15f",
+  "commit": "907c99aa1589bddf73e26079f2304b83d68a8e51",
   "files": {
     "DESIGN_SCHEMA.md": {
       "mode": 420,
@@ -20,15 +20,15 @@
     },
     "README.md": {
       "mode": 420,
-      "sha256": "af21048c247ea3de0e453d14367fac8df2cc26c97c7b24ea55c3cb90c6ce8b24"
+      "sha256": "cd27b433d6eb55867f840c3bc94750cd9650619cf78f3f715dfb5b4fb7bd97eb"
     },
     "examples/workflows/row_softmax/driver.py": {
       "mode": 420,
-      "sha256": "a46fc7924d48be2a274be496dd75a8d32e4cceda443ff90736a5081e10b9e80b"
+      "sha256": "e10c5a85edef2679b40298a83a108f5c9af30a65ab7f5f43c9f65d88a8fe0eee"
     },
     "examples/workflows/row_softmax/evaluator/EXECUTION.md": {
       "mode": 420,
-      "sha256": "ceaa335ef9586bf3381c8f73e4911a72d06ac17a478b8b53be244f7005ca291d"
+      "sha256": "6b9f43a74bf13fce0ec590d35727b51e6dfa07af45287a485a23d8d39b79ebac"
     },
     "examples/workflows/row_softmax/evaluator/baseline.py": {
       "mode": 420,
@@ -104,7 +104,7 @@
     },
     "examples/workflows/row_softmax/run_demo.py": {
       "mode": 420,
-      "sha256": "a3c9e692a3d53c319b817150aaa545d823a1b682d5e95c3b83b695d99d97e9ed"
+      "sha256": "55ab31ca3b3a68cfbfbdacdff1285ee43d32bef27ee0cd8966bfdee62e8f66e4"
     },
     "examples/workflows/row_softmax/schema/dispatch.md": {
       "mode": 420,
@@ -172,11 +172,11 @@
     },
     "kernelschema/INTERFACE.md": {
       "mode": 420,
-      "sha256": "9956896cabb20402bf92d711c4b0857ba3aadca8fc3f2b8629cc9cba8e6f1221"
+      "sha256": "23a945b163758339dc0f3fa21bacad3608c82ec458a28f9290e12cbeeaacb550"
     },
     "kernelschema/WRITING.md": {
       "mode": 420,
-      "sha256": "aa7a45a5ba57f9f7f035b1c0f4a552a40ed8482f109cebe8b7ff1be3c27c0915"
+      "sha256": "06ebef94e451ea6ac84a884554a407a7d9cf4852e10597c8686c089d8af0d307"
     },
     "kernelschema/__init__.py": {
       "mode": 420,
@@ -188,15 +188,15 @@
     },
     "kernelschema/_writing_policy.py": {
       "mode": 420,
-      "sha256": "03db13bd7691bec1f1d1c2adf9ac12bb9b34cf291c145bf0a9d45dceb0b722a2"
+      "sha256": "a8a17caddc3dbc981f3ee58cd4a2550769a4e5317dc59c2f54c858bdd8a553d6"
     },
     "kernelschema/api.py": {
       "mode": 420,
-      "sha256": "08d0c9796810467c8d084c95a8beffb55f29b1219ddae74316726d8d0e624aa2"
+      "sha256": "da20165e48676c1c0ba96c2c79849b79d72203c99e82fecca06fb173547c2e19"
     },
     "kernelschema/artifacts.py": {
       "mode": 420,
-      "sha256": "31c958293b91e445f441c904b6a14faa079b9eb77a56e61000ef116b53189d68"
+      "sha256": "23fb7969048f7a1c180b65552df94efae0013679ca2eddc8ee9e6a2a2e31166b"
     },
     "kernelschema/budget.py": {
       "mode": 420,
@@ -204,11 +204,11 @@
     },
     "kernelschema/cli.py": {
       "mode": 420,
-      "sha256": "42bfbdc28e554b50719e86603680505740f0f82ea3530c7cf51b8189f054bca4"
+      "sha256": "b61a0319674726456ac7cdc785b3f6f0f28f718dc8182334cbef2426f7584919"
     },
     "kernelschema/contracts.py": {
       "mode": 420,
-      "sha256": "611a1eb71e65e0a45980ced87bd7bec5ed9b38183912016b40b8e6cbfefefe51"
+      "sha256": "8015a58187781372b6e015dbdf6a8024ed88d1d0e4e5fa88c9b0d4df26f40e3c"
     },
     "kernelschema/design.py": {
       "mode": 420,
@@ -228,23 +228,27 @@
     },
     "kernelschema/evaluation/_remote.py": {
       "mode": 420,
-      "sha256": "17afcbe138bd4b7359bd63af06c5a7b1104ebc441a581417375cc1ca4c259674"
+      "sha256": "cab872d07a7119d4ae7ba9b9efd37ad5d41af5207bc7e2f644fcc709bbe868f6"
     },
     "kernelschema/evaluation/_sandbox.py": {
       "mode": 420,
       "sha256": "57b36155f934aecc0764ca80690df91560f6ef1d05e650114db710005ff020ec"
     },
+    "kernelschema/evaluation/_stage_ro.py": {
+      "mode": 420,
+      "sha256": "8ffcafa67b48608b6a04220b339625513c6ce3b58bfdf31da66f411c972aa4a2"
+    },
     "kernelschema/evaluation/_worker.py": {
       "mode": 420,
-      "sha256": "c780d59852483272f4244e1ad5b57863348d7c0d6046f99f44893fac6e0debf9"
+      "sha256": "aca98a5b60b194ac016d95d0dfe6d73a981a604128239fa5db5eff1dca92297b"
     },
     "kernelschema/evaluation/agate.py": {
       "mode": 420,
-      "sha256": "4dede59d550b44c4a630adb7121830cffc1177362d0b5047ef092dda0f687543"
+      "sha256": "c11985faa9a79819a8bf7d110aa91620f4bac1efed1bb51d9c04107655829bee"
     },
     "kernelschema/evaluation/channel.py": {
       "mode": 420,
-      "sha256": "c60a7e750ec3f2d11466345d2cf780802ef2f2003398a83c9e6d9bfd9f4cb66f"
+      "sha256": "ff4673f5ab80185c334e086e9aa11c767be747e9b9bc38ee5f30890487f67d16"
     },
     "kernelschema/evaluation/dispatch.py": {
       "mode": 420,
@@ -260,7 +264,7 @@
     },
     "kernelschema/evaluation/fa4_channel.py": {
       "mode": 420,
-      "sha256": "6a6e761c7a8ff0f4adcb81ad5a9ca94fca2be98ea08bf69a9ef42b08c6ac026e"
+      "sha256": "de0f396b518f2a5e9ef5e3a93548c45e6896a7eb4d228af46e890aa9341758c0"
     },
     "kernelschema/evaluation/local.py": {
       "mode": 420,
@@ -268,7 +272,7 @@
     },
     "kernelschema/evaluation/task.py": {
       "mode": 420,
-      "sha256": "437e1e1bd7a5dc3377f611659f1fb231d27f254f3fc335929df978ae21686844"
+      "sha256": "a190e95fdb17556c27b675c26a9ae469082d4ec0b6905ecc5be882f083e6e71b"
     },
     "kernelschema/extract_bridge.py": {
       "mode": 420,
@@ -296,7 +300,7 @@
     },
     "kernelschema/materials.py": {
       "mode": 420,
-      "sha256": "b177d25f391e4263443c9953d9887cc58b6f96ac9861eaeae7ff0c93388990ff"
+      "sha256": "632151bc9514705de96bbb88afeadfdb44e0c8ab8e987dbe09bb0b413fc3ebe9"
     },
     "kernelschema/optimize.py": {
       "mode": 420,
@@ -308,7 +312,7 @@
     },
     "kernelschema/runtime/INTERFACE.md": {
       "mode": 420,
-      "sha256": "0e52c4b8844733046278f732b6a5668ac79488e97c0630bade9b26d854811304"
+      "sha256": "09697ec238f3b5dd584088eae9a535373314d04967270e598426067a5d250ce2"
     },
     "kernelschema/runtime/__init__.py": {
       "mode": 420,
@@ -324,7 +328,7 @@
     },
     "kernelschema/runtime/claude.py": {
       "mode": 420,
-      "sha256": "b2f39adf72ee4a8c2c5189001fcb3651f3aabb53503d090ce039a1394c6f531b"
+      "sha256": "2212e9d44ffcccba7e38be2d4f82b9aa0c05e854fc2928558576f024ffa3a41e"
     },
     "kernelschema/runtime/profiles/README.md": {
       "mode": 420,
@@ -348,7 +352,7 @@
     },
     "kernelschema/writing.py": {
       "mode": 420,
-      "sha256": "606d44a79972e1a35a8f9ea2e291caebbc0a49e2948c231e9f5b3fc176736f61"
+      "sha256": "8c848bc7bbdbb66e0d194d35b7c02b0e3b79670e96b25457f52950a0bfe41211"
     },
     "pyproject.toml": {
       "mode": 420,

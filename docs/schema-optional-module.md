@@ -24,15 +24,12 @@ finite design/fixed/one-optimize/followup chain through that same factory.
 
 ## Source installation and provenance
 
-Use Python >=3.11 (the CPU verification used an isolated Python 3.13). Keep the
-matching original Framework, Legacy and Light distributions installed as in
-[the existing installation guide](application-plugin-migration.md). From an
-arbitrary cwd, with `AKA` set to the absolute source checkout:
+Use the [standard matching-source installation](schema-standard-workflow.md#install-and-legacy-compatibility)
+for Python >=3.11, the named KernelSchema submodule and the four matching
+Framework, Legacy, Light and Schema packages. For the explicit legacy
+`--schema-config` path, additionally verify the installed source manifest:
 
 ```sh
-git -C "$AKA" -c http.version=HTTP/1.1 submodule update --init -- optional/KernelSchema
-python -m pip install -e "$AKA/optional/KernelSchema"
-python -m pip install -e "$AKA/packages/atrex-aka-schema"
 python -I -c 'from aka.workflow.schema.release import verify_release; print(verify_release())'
 ```
 
@@ -53,6 +50,12 @@ runtime, Template/extract code, rules, public profiles, the row-softmax resource
 and the shared CPU fixture; private runtime qualification captures are excluded.
 It does not treat a profile filename, source path or hash as permission to read
 that file from a model role.
+
+The selected KS commit is
+[`907c99aa1589bddf73e26079f2304b83d68a8e51`](https://github.com/bcacdwk/KernelSchema/tree/907c99aa1589bddf73e26079f2304b83d68a8e51).
+The manifest's `aka_base_commit` is the historical integration base, not the
+source identity of the current four AKA packages; build them from the matching
+AKA resource checkout as described above.
 
 After an authorized fixed KS update, run
 `python "$AKA/tools/freeze_schema_release.py" --commit <full-detached-SHA>`.

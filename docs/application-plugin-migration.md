@@ -44,9 +44,16 @@ Build the packages with a Python 3.10+ environment containing the `build` fronte
 
 ```sh
 python -m pip install build
-python tools/build_distributions.py --output /tmp/aka-dist
-python -m pip install --force-reinstall /tmp/aka-dist/*.whl
+AKA_DIST=$(mktemp -d "${TMPDIR:-/tmp}/aka-dist.XXXXXX")
+python tools/build_distributions.py --output "$AKA_DIST" \
+  atrex-aka-framework atrex-aka-legacy atrex-aka-light \
+  atrex-aka-dashboard atrex-aka-observation-long-horizon
+python -m pip install --force-reinstall "$AKA_DIST"/*.whl
 ```
+
+This explicitly builds the original five distributions in a fresh directory.
+Schema is opt-in; use its [matching source and package installation](schema-standard-workflow.md#install-and-legacy-compatibility)
+when selecting `--schema`.
 
 The installed packages require a **matching resource checkout** for declared external resources.
 Keep the packages and checkout from the same source
