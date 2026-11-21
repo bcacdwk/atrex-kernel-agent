@@ -1,6 +1,6 @@
 {
   "aka_base_commit": "c984d141145d31795514579db213413a1bbb0775",
-  "commit": "1c9e592c6e0ec021f91e17af5a8c39956ce39178",
+  "commit": "7d5fb60cf1d6f9ef7cf63dff757250bb4f614ab1",
   "files": {
     "DESIGN_SCHEMA.md": {
       "mode": 420,
@@ -24,7 +24,7 @@
     },
     "examples/workflows/row_softmax/driver.py": {
       "mode": 420,
-      "sha256": "b6c366d610aebcff7409e77966eedb13513be7c1fb706efeb8283a9b1b1b1aea"
+      "sha256": "a46fc7924d48be2a274be496dd75a8d32e4cceda443ff90736a5081e10b9e80b"
     },
     "examples/workflows/row_softmax/evaluator/EXECUTION.md": {
       "mode": 420,
@@ -78,6 +78,14 @@
       "mode": 420,
       "sha256": "780cd7e119bd857e88d25351901534b5d86a37405abacb7501a1ba656c84b3a9"
     },
+    "examples/workflows/row_softmax/references/h20-target-b14.md": {
+      "mode": 420,
+      "sha256": "f2dab403aa8dcce16c2b8dbdd8a281665b37238e347f9e1ac1722bffb3b0af76"
+    },
+    "examples/workflows/row_softmax/references/l20d-target-b16.md": {
+      "mode": 420,
+      "sha256": "acbfe0af0ad5710d9b8b8dd08e65ad4812ba17fd1e9f814ec399380efd900e70"
+    },
     "examples/workflows/row_softmax/references/missing.md": {
       "mode": 420,
       "sha256": "563f6016ddb5db265ca4be8441b1f8d468e935fa6c2077032cc607f361e8991a"
@@ -96,7 +104,7 @@
     },
     "examples/workflows/row_softmax/run_demo.py": {
       "mode": 420,
-      "sha256": "67a444164a2641ba7b39d52635cc6d7f09b3ce7ae0e564abccf453cf0192dd19"
+      "sha256": "a3c9e692a3d53c319b817150aaa545d823a1b682d5e95c3b83b695d99d97e9ed"
     },
     "examples/workflows/row_softmax/schema/dispatch.md": {
       "mode": 420,
@@ -232,11 +240,11 @@
     },
     "kernelschema/evaluation/agate.py": {
       "mode": 420,
-      "sha256": "09852f4d2519226407e9930b6a34e1f9a0c07d44e245caecb0e12e303540e6c1"
+      "sha256": "4dede59d550b44c4a630adb7121830cffc1177362d0b5047ef092dda0f687543"
     },
     "kernelschema/evaluation/channel.py": {
       "mode": 420,
-      "sha256": "f3dde3823f1f3b94d8fdc075a9127c172017f94bd4d2fc96381028a6dffb534b"
+      "sha256": "c60a7e750ec3f2d11466345d2cf780802ef2f2003398a83c9e6d9bfd9f4cb66f"
     },
     "kernelschema/evaluation/dispatch.py": {
       "mode": 420,

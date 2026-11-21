@@ -12,8 +12,8 @@ unverified.
 | --- | --- |
 | Original AKA | <https://github.com/alibaba/atrex-kernel-agent>, base `bf5557ac04f6ff9988901d511cf25e1cbe61a1bc` |
 | AKA integration fork | <https://github.com/bcacdwk/atrex-kernel-agent>, dynamic final-review input `04fab50d67f37f341fa0eb60f8a1928d65df1d10` |
-| KS dependency | <https://github.com/bcacdwk/KernelSchema>, detached gitlink `1c9e592c6e0ec021f91e17af5a8c39956ce39178` |
-| KS selected resource manifest | `src/aka/workflow/schema/release.json`, SHA-256 `f85aa4e254407d319318520aab49b7a448b4d77dd7a7551baffee490d78fb14e` |
+| KS dependency | <https://github.com/bcacdwk/KernelSchema>, detached gitlink `7d5fb60cf1d6f9ef7cf63dff757250bb4f614ab1` |
+| KS selected resource manifest | `src/aka/workflow/schema/release.json`, SHA-256 `0ac0141bac462dfaafa07c66bb44d3db1b215c8a12f6d9e73e75eb99a3f34a00` |
 
 The review input above precedes the accompanying final-review changes. A
 published release must identify the final reviewed AKA commit and wheel hashes;
