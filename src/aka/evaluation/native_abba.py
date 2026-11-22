@@ -68,7 +68,7 @@ def prepare_comparison(request, configuration, workspace, evaluation_input, cont
     from aka.contracts.execution import CommandSpec, UnsupportedExecution
     from aka.contracts.measurement import MeasurementPoint
     from .gateway_request import prepare_request, _candidate_languages
-    from .command_inputs import workload_environment
+    from .command_inputs import evaluation_command_environment, workload_environment
     from .private_inputs import selected_content
     from .shapes import batch_shape_ids, shape_batch_request
     from .transport_results import _shape_batch_reference
@@ -144,7 +144,7 @@ def prepare_comparison(request, configuration, workspace, evaluation_input, cont
     reference = evaluation_input.directory if evaluation_input is not None else configuration.private_reference_dir or request.workspace
     command = CommandSpec(request.workspace, ("python3", "test_kernel.py", "--version", "vlong", "--no-memory"),
         timeout=configuration.timeout, operation="same_allocation_abba", hardware=configuration.hardware,
-        environment=configuration.environment)
+        environment=evaluation_command_environment(configuration))
     environment = workload_environment(command)
     requirements = ()
     if evaluation_input is not None and evaluation_input.worker_requirements is not None:

@@ -99,8 +99,7 @@ class LegacyEvaluator:
         if getattr(prepared.context, "native", False):
             return prepared
         if request.mode in {"v0", "framework"} and self.configuration.hardware:
-            command = replace(prepared.steps[0], hardware=self.configuration.hardware,
-                              environment=self.configuration.environment)
+            command = replace(prepared.steps[0], hardware=self.configuration.hardware)
             gateway = self._command_evaluator().prepare(command)
             prepared = replace(prepared, steps=gateway.steps, max_parallelism=gateway.max_parallelism,
                                context=replace(prepared.context, gateway=gateway), fallback_steps=gateway.fallback_steps)
@@ -134,6 +133,7 @@ class LegacyEvaluator:
 
     def _prepare(self, request: EvaluationRequest) -> PreparedEvaluation:
         config = self.configuration
+        from .command_inputs import evaluation_command_environment
         if self.evaluation_input is not None:
             from aka.task.problem.resources import validate_resources
             validate_resources(self.evaluation_input)
@@ -153,7 +153,8 @@ class LegacyEvaluator:
             return PreparedEvaluation(
                 (
                     CommandSpec(
-                        request.workspace, tuple(command), timeout=config.timeout, environment=config.environment
+                        request.workspace, tuple(command), timeout=config.timeout,
+                        environment=evaluation_command_environment(config)
                     ),
                 ),
                 1,
@@ -225,7 +226,7 @@ class LegacyEvaluator:
                     ),
                     timeout=config.timeout,
                     operation="dev",
-                    environment=config.environment,
+                    environment=evaluation_command_environment(config),
                     num_gpus=num_gpus,
                 )
             )

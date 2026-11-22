@@ -34,6 +34,8 @@ def input_source(original, case, seed):
 
 
 def prepare_typed(request, configuration, suite, shapes, schedule, trusted, limit, requirements):
+    from .command_inputs import evaluation_command_environment, workload_environment
+    environment = evaluation_command_environment(configuration)
     if suite['world_size'] != 1:
         raise ValueError('typed supplemental probes require one GPU')
     probe = request.numerical_probe
@@ -55,8 +57,11 @@ def prepare_typed(request, configuration, suite, shapes, schedule, trusted, limi
                 # vlong + multi-seed selects correctness before baseline validation;
                 # the final typed request freezes exactly one fixed-seed probe.
                 command = ('python3', 'test_kernel.py', '--version', 'vlong', '--multi-seed', '1')
+                step = CommandSpec(request.workspace, command, timeout=configuration.timeout, operation='run',
+                    hardware=configuration.hardware, environment=environment)
                 payload = prepare_request(request.workspace, configuration.hardware, configuration.timeout,
-                    [], list(command), 'run', reference_dir=request.workspace, reference_content=content,
+                    [f'{key}={value}' for key, value in workload_environment(step).items()],
+                    list(command), 'run', reference_dir=request.workspace, reference_content=content,
                     candidate_source='', candidate_solution=solution, requirements=requirements,
                     runtime_version=configuration.environment.get('ATREX_SANDBOX_ATREX_BENCH_VERSION', ''),
                     measurement_environment=configuration.environment)
@@ -67,8 +72,7 @@ def prepare_typed(request, configuration, suite, shapes, schedule, trusted, limi
                 payload['deps_mode'] = DEFAULT_DEPENDENCY_POLICY
                 payload['options'].update(num_correctness_cases=1, correctness_max_rel_l2=limit)
                 files = {name: data.decode() for name, data in _shape_batch_reference(payload['reference']).items()}
-                step = CommandSpec(request.workspace, command, timeout=configuration.timeout, operation='run',
-                    hardware=configuration.hardware, environment=configuration.environment,
+                step = replace(step,
                     requirements=requirements, source_archives=(archive,) if archive else (),
                     submission=json.dumps({'schema_version': 1, 'kind': 'run', 'request': payload,
                                            'reference_files': files}, allow_nan=False).encode())

@@ -222,6 +222,13 @@ The public L20D recipe generates the corresponding patch. Keep signed wheel
 locators outside the source repository and verify actual installed runtime
 identity from the execution receipt.
 
+`EvaluationConfiguration.environment` supplies local host settings. Worker
+environment defaults to empty; declare worker values through
+`worker_environment` or the existing tool `--env` option. Tool values override
+those defaults. Transport-reserved inputs are rejected locally, and the
+service validates allowed worker variables. Host credentials and paths are
+not inherited by the worker.
+
 To establish new reference metadata with the configured native Agate CLI:
 
 ```sh

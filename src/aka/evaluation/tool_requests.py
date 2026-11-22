@@ -76,7 +76,7 @@ def request_from_argv(argv, *, workspace, evaluation_input, configuration, works
     if evaluation_input is not None and evaluation_input.adapter == "kernelschema-row-softmax-v1":
         raise ValueError("Retired KernelSchema evaluation adapter; prepare a native AKA Task in a new workspace")
     from aka.execution.command_syntax import requested_operation
-    from .command_inputs import workload_environment
+    from .command_inputs import evaluation_command_environment, workload_environment
     from .gateway_request import prepare_request, _candidate_languages
     from .private_inputs import selected_content
     args = parse_tool_arguments(argv)
@@ -136,16 +136,8 @@ def request_from_argv(argv, *, workspace, evaluation_input, configuration, works
         raise ValueError("Dev requires an explicit command")
     artifacts = tuple([] if args.no_sync else args.sync or ["profiles"])
     output = OutputOptions(True if args.inline_output else None, True if args.include_raw_profile else None)
-    # Exported Bash functions are shell startup state, not workload variables.
-    # Keep explicit --env values below subject to the normal strict validation.
-    host_environment = {key: value for key, value in configuration.environment.items()
-                        if not isinstance(key, str) or not key.startswith("BASH_FUNC_")}
-    explicit = dict(host_environment)
-    for item in args.env:
-        if "=" not in item:
-            raise ValueError("--env requires KEY=VALUE")
-        key, value = item.split("=", 1)
-        explicit[key] = value
+    host_environment = configuration.environment
+    explicit = evaluation_command_environment(configuration, args.env)
     provisional = CommandSpec(workspace, command, timeout=configuration.timeout, environment=explicit,
         hardware=configuration.hardware, artifacts=artifacts, operation=kind, filesystem_access=filesystem_access, output_options=output)
     environment = workload_environment(provisional)

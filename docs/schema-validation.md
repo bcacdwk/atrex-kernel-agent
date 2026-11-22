@@ -1,6 +1,6 @@
 # Schema 实施与运行验证记录
 
-当前阶段：五轮实现及清理已提交，真实实验已推进到 `246ba5c`。已有 kernel 的链路完成 optimize、实现与同卡性能对比，首轮因 Schema 审查输出格式无效而未晋升；无 SOTA GEMM 仍在 design。尚未形成完整 D/E 闭环或多日稳定证据。本文件保留简要问题与修复证据，原始日志外置。
+当前阶段：五轮实现及清理已提交，并持续修复真实实验暴露的问题。旧链完成过 optimize、实现与同卡比较，但未形成完整 D/E 闭环。独立 a94 新运行的 V0 因 worker 环境越界被网关拒绝，修复已通过 CPU 审查，待安装及实测；尚无多日稳定证据。本文件保留简要问题与修复证据，原始日志外置。
 
 ## 正式目标
 
@@ -82,3 +82,11 @@
 - `64866b3` 独立发行检查发现真实 V0 链还有漏接：Legacy 非 SSH 分支未将已持久化 key 注入 launcher payload。仅扩展既有 prepared_payload 接线并新增完整 V0→launcher→SDK raw submit 回归；源码82项、独立非 editable 安装83项通过，均0 skipped。原失败安装用例也原样通过，798文件在 source/sdist/wheel/installed 间一致，无真实网络调用。共享运行环境仍为 f205518，旧503状态未改。
 - 同一活 Legacy 调用的有限恢复已实现：需显式 verified URL 和 idempotent_replay 开关，固定原 key/body/route/AK，最多额外两次且每轮原准入扣账，保留唯一截止时间及失败原件；同原作业终态证据才能结清关联 unknown。默认关闭，不增加跨进程恢复或通用 scoped replay。最终120项源码检查通过（38新+82既有），独立反例与定点审查通过；安装版及真实新调用仍待验证。
 - 独审修复了五项初稿缺口：顶层禁止重放策略、原错误字段完整留存、第二次存档失败不丢已知 JobRef、损坏回执禁止重试、慢准入/启动/存档不延长截止时间。实际所选服务0.14.37自身文档支持同请求同 key 重放；普通列表明确隐藏归档作业，因此旧两条无 key 的 unknown 仍需服务关联证据，不能由本修复解锁。
+
+### 独立发布验证与 worker 环境
+
+- a94 四包实际 sdist→wheel→独立安装验证通过：799文件/541模块一致，安装版120项、7独立反例及实际 light-sandbox/bwrap/projected 三配置装配通过，0 skipped。旧 f205 安装和两条 unknown 保留；新根 `/home/shaohanyong.shy/aka-schema-l20d-a94-validation` 明确作为新版本完整实验，新增消费另计。
+- SDK 说明 unknown 归档可能释放网关预约，因此补查实际物理分配层。服务正式 overview 的 L20D backend 集合只有 ray，与唯一 L20D resource 组交叉一致；结合其原子分配合同及启动前 fresh primary/队列/slots/cleanup 检查，满足新实验隔离门。旧 unknown 未因此结算。
+- 18:04 UTC vector 唯一启动，V0 收到 HTTP400 invalid_source：worker env_vars 误带235项宿主变量，网关校验拒绝，原调用已 terminal/settled/not_submitted。0模型、1派发、0 JobRef、0/3测量；GEMM未启动，没有重复提交。
+- 模型鉴权配置也被误带入已拒绝的网关请求，已告知用户；原值未在对话输出或入库，原始证据只私有保留。不能据现有接口断言网关未记录请求。原失败的 Agent/Planner 反馈投影未检出已核查的鉴权值。
+- 修复在身份冻结前分离 host 和 worker：新增默认空且冻结的 worker_environment，保留现有显式 --env、transport 本地设置及原依赖/硬件/形状/重复测量/ABBA语义；不复制完整服务端 allowlist，不重写旧正文或 key。最终177项 CPU 检查、独立实际 live SDK 消费路径审查通过，真实请求尚未重试。

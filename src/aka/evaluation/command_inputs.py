@@ -23,6 +23,23 @@ def legacy_command_environment(environment, env_items=()):
     return result
 
 
+def evaluation_command_environment(configuration, env_items=()):
+    """Keep host controls local; only declared worker values cross the boundary.
+
+    The bound ExecutionContext owns the full launcher environment. Commands
+    retain reserved host controls for measurement preparation and the legacy
+    transport, but workload_environment excludes them from remote requests.
+    """
+    from aka.execution.configuration import validate_workload_environment
+    worker = dict(configuration.worker_environment)
+    validate_workload_environment(worker)
+    explicit = _parse_env_items(env_items)
+    validate_workload_environment(explicit)
+    return {**{key: value for key, value in configuration.environment.items()
+               if isinstance(key, str) and transport_environment_key(key)},
+            **worker, **explicit}
+
+
 def workload_environment(command, env_items=()):
     # CLI arguments are compatibility inputs. The public mapping is authoritative
     # when both channels contain the same explicitly supplied workload variable.

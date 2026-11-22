@@ -26,7 +26,8 @@ from aka.workflow.schema.workflow import _measurement_feedback, build_feedback
 from test_schema_workflow import controller, native
 
 
-def native_launcher(tmp_path, monkeypatch):
+def native_launcher(tmp_path, monkeypatch, *, host_environment=None,
+                    evaluation_defaults=None, requirements_text=""):
     campaign = native(tmp_path)
     task = tmp_path / "task-inputs"
     task.mkdir()
@@ -34,7 +35,7 @@ def native_launcher(tmp_path, monkeypatch):
     files = tuple(WorkspaceFile(name, text=(example / name).read_text())
                   for name in ("reference.py", "input.py", "shapes.json", "metadata.json"))
     requirements = task / "requirements.txt"
-    requirements.write_text("")
+    requirements.write_text(requirements_text)
     evaluation = EvaluationInput("legacy-native-v1", task, files,
         runtime_root=task, case_ids=("0", "1", "2"),
         worker_requirements=WorkspaceFile("requirements.txt", source=requirements))
@@ -47,8 +48,8 @@ def native_launcher(tmp_path, monkeypatch):
     campaign.problem_provider.content = content
     executor = LegacyExecutor()
     workflow = SimpleNamespace(executor=executor, agent=campaign.agent,
-        problem=campaign.problem_provider, execution_context=ExecutionContext({}, "L20D", 60),
-        evaluation_defaults=EvaluationConfiguration(), measurement_parallelism=1,
+        problem=campaign.problem_provider, execution_context=ExecutionContext(host_environment or {}, "L20D", 60),
+        evaluation_defaults=evaluation_defaults or EvaluationConfiguration(), measurement_parallelism=1,
         evaluator_factory=LegacyEvaluatorFactory(), experiment_factory=LegacyExperimentFactory(),
         options=SimpleNamespace(wiki=False, research_records=False, wiki_options={},
             request_timeout=60, queue_timeout=60, inherit_state=False))

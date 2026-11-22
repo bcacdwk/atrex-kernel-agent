@@ -155,6 +155,7 @@ class WorkflowServices:
                 execution_capabilities=execution_capabilities,
                 comparison_method=self.evaluation_defaults.comparison_method,
                 measurement_repetitions=self.evaluation_defaults.measurement_repetitions,
+                worker_environment=self.evaluation_defaults.worker_environment,
             ),
             candidate_workspace=self.campaign.candidate_workspace,
             evaluation_input=self.evaluation_input(),

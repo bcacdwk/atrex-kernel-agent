@@ -454,6 +454,12 @@ class CommandEvaluator(Protocol):
 
 @dataclass(frozen=True)
 class EvaluationConfiguration:
+    """Host evaluation settings and separately declared remote workload values.
+
+    ``environment`` configures local execution and measurement policy; it is
+    never an implicit worker environment. Callers opt in with
+    ``worker_environment`` or explicit command/tool environment values.
+    """
     timeout: int = derived_evaluation_timeout()
     repeats: int = DEFAULT_ABBA_REPEATS
     per_run_timeout: int = DEFAULT_ABBA_RUN_TIMEOUT
@@ -467,6 +473,7 @@ class EvaluationConfiguration:
     execution_capabilities: BackendCapabilities | None = None
     comparison_method: Literal["legacy-abba", "native-abba"] = "legacy-abba"
     measurement_repetitions: int = 1
+    worker_environment: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.comparison_method not in {"legacy-abba", "native-abba"}:
@@ -474,6 +481,7 @@ class EvaluationConfiguration:
         if type(self.measurement_repetitions) is not int or self.measurement_repetitions not in {1, 3}:
             raise ValueError("measurement repetitions must be 1 or 3")
         object.__setattr__(self, "environment", MappingProxyType(dict(self.environment)))
+        object.__setattr__(self, "worker_environment", MappingProxyType(dict(self.worker_environment)))
         if self.execution_capabilities is not None and not isinstance(self.execution_capabilities, BackendCapabilities):
             raise TypeError("evaluation preparation requires bound BackendCapabilities")
 
