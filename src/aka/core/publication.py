@@ -8,10 +8,13 @@ link count and inode relationship; unrelated aliases are never repaired.
 from __future__ import annotations
 
 from contextlib import contextmanager
+import ctypes
+import errno
 import fcntl
 import os
 from pathlib import Path
 import stat
+import sys
 
 from .filesystem import file_signature, open_private_directory
 
@@ -146,12 +149,38 @@ def _stage(parent, name, payload, mode):
     os.fsync(parent)
 
 
+def _rename_noreplace(parent, source, destination):
+    """Move an intent atomically without replacing any destination entry.
+
+    Linux's exclusive rename avoids temporary hardlink aliases, whose removal
+    some FUSE filesystems do not reflect in st_nlink. Return False only when
+    this primitive is unavailable; other errors must preserve the intent and
+    propagate. The caller's link/unlink fallback retains its strict validation.
+    """
+    if sys.platform != "linux":
+        return False
+    try:
+        rename = ctypes.CDLL(None, use_errno=True).renameat2
+    except AttributeError:
+        return False
+    rename.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
+                       ctypes.c_char_p, ctypes.c_uint)
+    rename.restype = ctypes.c_int
+    if rename(parent, os.fsencode(source), parent, os.fsencode(destination), 1) == 0:
+        return True  # RENAME_NOREPLACE
+    error = ctypes.get_errno()
+    if error in (errno.ENOSYS, errno.EINVAL, errno.EOPNOTSUPP, errno.ENOTSUP):
+        return False
+    raise OSError(error, os.strerror(error), destination)
+
+
 def publish_immutable(path, payload):
     """Publish 0444 content without replacing a destination, recovering its intent.
 
-    A crash after link leaves exactly the destination and its reserved staging
-    alias. Only that verified pair can be reconciled. A crash while staging can
-    be retried only with the same expected payload. Unknown aliases or altered
+    Exclusive rename leaves either the staging intent or the destination. The
+    portable link fallback can leave both names after a crash; only that
+    verified pair can be reconciled. A crash while staging can be retried only
+    with the same expected payload. Unknown aliases or altered
     content remain errors and are preserved for diagnosis. Death between
     exclusive creation and initial permission normalization can leave an
     unrecognized mode; that boundary fails closed instead of chmodding an
@@ -186,6 +215,8 @@ def publish_immutable(path, payload):
             _sync_verified(parent, path.name, existing[1])
             if staged is not None:
                 _unlink(parent, temporary, staged[1])
+            else:
+                os.fsync(parent)
             return
         if staged is None:
             _stage(parent, temporary, payload, 0o444)
@@ -193,11 +224,14 @@ def publish_immutable(path, payload):
             # A previous writer may have set readonly mode but died before
             # fsync returned. Verify and persist the retained intent again.
             _sync_verified(parent, temporary, staged[1])
-        # The lock serializes participating publishers; link still protects
-        # against an unrelated creator, without any replacing rename fallback.
+        # Both primitives protect against an unrelated creator. Never emulate
+        # exclusive rename with a target existence check and replacing rename.
+        moved = False
         try:
-            os.link(temporary, path.name, src_dir_fd=parent, dst_dir_fd=parent,
-                    follow_symlinks=False)
+            moved = _rename_noreplace(parent, temporary, path.name)
+            if not moved:
+                os.link(temporary, path.name, src_dir_fd=parent, dst_dir_fd=parent,
+                        follow_symlinks=False)
         except FileExistsError:
             other, value = _read(parent, path.name, len(payload))
             _ordinary(value, 0o444)
@@ -205,15 +239,16 @@ def publish_immutable(path, payload):
                 raise ValueError("immutable publication identity collision")
             _sync_verified(parent, path.name, value)
         os.fsync(parent)
-        data, value = _read(parent, temporary, len(payload))
-        if data != payload or value.st_nlink not in (1, 2):
-            raise ValueError("immutable publication staging changed")
-        _ordinary(value, 0o444, links=value.st_nlink)
-        if value.st_nlink == 2:
-            target = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
-            if not _same_file(value, target):
-                raise ValueError("immutable publication has an unknown alias")
-        _unlink(parent, temporary, value)
+        if not moved:
+            data, value = _read(parent, temporary, len(payload))
+            if data != payload or value.st_nlink not in (1, 2):
+                raise ValueError("immutable publication staging changed")
+            _ordinary(value, 0o444, links=value.st_nlink)
+            if value.st_nlink == 2:
+                target = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
+                if not _same_file(value, target):
+                    raise ValueError("immutable publication has an unknown alias")
+            _unlink(parent, temporary, value)
         data, value = _read(parent, path.name, len(payload))
         _ordinary(value, 0o444)
         if data != payload:

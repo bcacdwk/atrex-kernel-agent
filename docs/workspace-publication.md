@@ -11,15 +11,21 @@ previous initialization is retried.
 publication implementation to Candidate Workspace context and Resources
 content objects. It stages in the destination directory, writes and flushes
 the complete payload, sets mode `0444`, fsyncs, and **closes the descriptor**
-before publishing with a non-replacing hard link. It removes the staging
-entry and fsyncs the directory before verifying the final single-link object.
-The destination is never replaced to resolve a content collision.
+before publishing with Linux `renameat2(RENAME_NOREPLACE)` when supported.
+This moves the staging inode without replacing any destination. Only an
+explicitly unavailable primitive falls back to the non-replacing hard-link
+transaction, which removes its staging alias. Both paths fsync the directory
+and verify the final single-link object. A replacing rename is never used to
+resolve a content collision.
 
 Closing first matters on NFS: unlinking an open file can retain a hidden
 `.nfs*` alias and make the final file have two links. No retry or relaxation of
 the retained-object link count is used to hide that condition. Staging uses
 the destination filesystem regardless of `TMPDIR`; publication never requires
-a cross-filesystem link.
+a cross-filesystem operation. Some FUSE mounts retain an incorrect link count
+after a hard-link alias is removed; exclusive rename avoids creating that
+alias. If exclusive rename is unavailable and the fallback cannot satisfy the
+original checks, publication fails rather than accepting ambiguous metadata.
 
 The reserved staging name `.<destination-name>.aka-publish` expresses an
 intent for that destination. Cooperating writers serialize through a
@@ -37,9 +43,10 @@ The next call with the same requested bytes can reconcile these states:
 | Interrupted operation | Retry behavior |
 | --- | --- |
 | Partial staging write | A single-link, ordinary staging file containing a prefix of the requested bytes can be discarded and rewritten. |
-| Staging complete, before link | Revalidate and fsync the complete readonly staging object, close its descriptor, then publish it. |
-| Link complete, before staging unlink | Require exactly two links, matching bytes and modes, and the same inode for the destination and its reserved staging name; fsync that verified inode, close its descriptor, then remove only that staging alias. |
-| Staging unlink complete | Verify and fsync the existing canonical single-link object, then reuse it. |
+| Staging complete, before publication | Revalidate and fsync the complete readonly staging object, close its descriptor, then publish it. |
+| Exclusive rename complete | Verify and fsync the canonical single-link object and its parent, then reuse it; the staging name has moved. |
+| Fallback link complete, before staging unlink | Require exactly two links, matching bytes and modes, and the same inode for the destination and its reserved staging name; fsync that verified inode, close its descriptor, then remove only that staging alias. |
+| Fallback staging unlink complete | Verify and fsync the existing canonical single-link object and its parent, then reuse it. |
 
 A different payload, unexpected mode, symlink, third link, or alias outside the
 reserved transaction name is an error. Recovery does not scan for arbitrary
@@ -48,7 +55,12 @@ for diagnosis. Readonly mode does not prove a previous file fsync completed.
 Every recovered object and same-content collision is therefore file-fsynced
 before reuse or staging cleanup. Identity, mode and link count are rechecked
 across fsync; errors preserve the uncommitted recovery inputs. Every such file
-descriptor is closed before linking or unlinking, including recovery paths.
+descriptor is closed before publishing or unlinking, including recovery paths.
+If a filesystem returns different signatures for stat and the opened file
+immediately after a crash, recovery preserves the original state and rejects
+that observation. A later explicit recovery must independently establish a
+stable signature and the same requested content; no weakened metadata check is
+used to make a first attempt appear successful.
 
 `aka.core.publication.replace_bytes` supplies durable replacement for mutable
 management content. The Workspace context manifest keeps its existing
@@ -105,7 +117,8 @@ matrix. A local descriptor-lifetime check is insufficient evidence of real NFS
 acceptance: the same checks must also run on an actual writable NFS mount.
 
 The filesystem acceptance matrix covers actual `SIGKILL` during partial writes,
-before and after data fsync, hard-link publication, staging unlink, and both the
+before and after data fsync, exclusive rename, fallback hard-link publication,
+staging unlink, and both the
 initial and post-runtime manifest replacements. It verifies retries preserve
 expected bytes, readonly permissions and single-link retained identities. It
 also covers concurrent same-content writers, unknown aliases, symlinks,
