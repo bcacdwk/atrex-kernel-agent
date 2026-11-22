@@ -100,7 +100,7 @@ def test_writer_override_preserves_settings_native_capture_and_root_charge(write
     call = h.calls[0]
     expected = {**h.settings, "env": {**h.settings["env"], "MAX_THINKING_TOKENS": "8192",
         "CLAUDE_CODE_MODEL_CAPABILITIES": h.settings["env"]["CLAUDE_CODE_MODEL_CAPABILITIES"]
-        + ";qwen3.8-max=-adaptive_thinking"}}
+        + ";qwen3.8-max=-adaptive_thinking,-effort"}}
     assert settings(call) == expected
     assert h.agent.configuration_identity == identity
     assert call["timeout"] == 3600 and call["command"][call["command"].index("--effort") + 1] == "high"
@@ -109,8 +109,10 @@ def test_writer_override_preserves_settings_native_capture_and_root_charge(write
     assert json.loads(call["environment"]["ATREX_CLAUDE_SESSION_SETTINGS"]) == expected
     intent = json.loads((result.directory / "intent.json").read_text())
     assert intent["config"]["writer_thinking_budget_tokens"] == 8192
-    assert intent["writer_thinking"] == {"model": "qwen3.8-max[1m]", "settings_sources": {}, "settings_sha256": hashlib.sha256(
+    assert intent["writer_thinking"] == {"model": "qwen3.8-max[1m]",
+        "mode": "fixed_budget_without_effort", "settings_sources": {}, "settings_sha256": hashlib.sha256(
         call["environment"]["ATREX_CLAUDE_SESSION_SETTINGS"].encode()).hexdigest()}
+    assert json.loads((result.directory / "attempts/1/native/writer-thinking.json").read_text()) == intent["writer_thinking"]
     retained_call = next(iter(h.state.data["calls"].values()))
     assert retained_call["owner"]["command_digest"] == digest(call["command"])
     assert retained_call["state"] == "settled"
@@ -126,6 +128,7 @@ def test_default_command_settings_remain_identical(writer):
     assert settings(writer.calls[0]) == writer.settings
     assert "writer_thinking" not in json.loads((result.directory / "intent.json").read_text())
     assert "MAX_THINKING_TOKENS" not in settings(writer.calls[0])["env"]
+    assert not (result.directory / "attempts/1/native/writer-thinking.json").exists()
 
 
 @pytest.mark.parametrize("writer", [{"environment": {"ANTHROPIC_MODEL": "QWEN3.8-MAX[1M]"}}], indirect=True)
@@ -133,7 +136,7 @@ def test_capability_selector_normalizes_case_without_changing_model_selection(wr
     result = initial(writer)
     assert writer.calls[0]["environment"]["ANTHROPIC_MODEL"] == "QWEN3.8-MAX[1M]"
     assert settings(writer.calls[0])["env"]["CLAUDE_CODE_MODEL_CAPABILITIES"].endswith(
-        ";qwen3.8-max=-adaptive_thinking")
+        ";qwen3.8-max=-adaptive_thinking,-effort")
     assert json.loads((result.directory / "intent.json").read_text())["writer_thinking"]["model"] == "QWEN3.8-MAX[1M]"
 
 
@@ -302,7 +305,7 @@ def test_public_config_reaches_shared_native_owner_without_capping_coder(tmp_pat
     assert campaign.driver.planner.config.writer_thinking_budget_tokens == 8192
     assert [call["kind"] for call in harness.calls] == ["design", "implement"]
     assert observed == [{**baseline, "env": {"MAX_THINKING_TOKENS": "8192",
-        "CLAUDE_CODE_MODEL_CAPABILITIES": "qwen3.8-max=-adaptive_thinking"}}, baseline]
+        "CLAUDE_CODE_MODEL_CAPABILITIES": "qwen3.8-max=-adaptive_thinking,-effort"}}, baseline]
     assert campaign.driver.state.data["counts"]["agent_calls"] == 2
 
 
@@ -329,7 +332,7 @@ def test_user_settings_preserve_permissions_hooks_other_env_and_capabilities(wri
     assert settings(h.calls[0]) == {"skipWebFetchPreflight": True, "env": {
         "MAX_THINKING_TOKENS": "8192",
         "CLAUDE_CODE_MODEL_CAPABILITIES": original["env"]["CLAUDE_CODE_MODEL_CAPABILITIES"]
-        + ";qwen3.8-max=-adaptive_thinking"}}
+        + ";qwen3.8-max=-adaptive_thinking,-effort"}}
     assert path.read_bytes() == raw
     assert h.planner.design(h.request) == result and len(h.calls) == 1
 
@@ -478,3 +481,58 @@ def test_empty_primary_agent_selection_does_not_disable_budget(writer, agent):
     user_settings(writer, {"agent": agent, "skipWebFetchPreflight": True})
     assert initial(writer).status == "replace"
     assert settings(writer.calls[0])["env"]["MAX_THINKING_TOKENS"] == "8192"
+
+
+def test_previous_budget_with_effort_intent_is_not_replayed_or_rewritten(writer, monkeypatch):
+    from aka.workflow.schema import planner as module
+    current = module._writer_thinking_settings
+    def previous(*args, **kwargs):
+        identity, override = current(*args, **kwargs)
+        document = json.loads(override["ATREX_CLAUDE_SESSION_SETTINGS"])
+        document["env"]["CLAUDE_CODE_MODEL_CAPABILITIES"] = document["env"][
+            "CLAUDE_CODE_MODEL_CAPABILITIES"].removesuffix(",-effort")
+        encoded = module._json(document).decode()
+        identity.pop("mode")
+        identity["settings_sha256"] = hashlib.sha256(encoded.encode()).hexdigest()
+        return identity, {"ATREX_CLAUDE_SESSION_SETTINGS": encoded}
+    with monkeypatch.context() as old:
+        old.setattr(module, "_writer_thinking_settings", previous)
+        result = initial(writer)
+    intent = result.directory / "intent.json"
+    before = intent.read_bytes(), intent.stat().st_mtime_ns
+    assert "mode" not in json.loads(before[0])["writer_thinking"]
+    with pytest.raises(ValueError, match="conflicts"):
+        writer.planner.design(writer.request)
+    assert (intent.read_bytes(), intent.stat().st_mtime_ns) == before
+    assert len(writer.calls) == writer.state.data["counts"]["agent_calls"] == 1
+    assert writer.state.data["counts"]["tokens"] == 18
+
+
+@pytest.mark.parametrize("writer", [{"settings": {"skipWebFetchPreflight": True}}], indirect=True)
+@pytest.mark.parametrize("kind", ["managed", "remote"])
+@pytest.mark.parametrize("flags, supported", [
+    ("adaptive_thinking", False),
+    ("-adaptive_thinking,effort", False),
+    ("-adaptive_thinking,-effort", True),
+])
+def test_managed_capabilities_must_already_allow_budget_without_effort(writer, monkeypatch, kind, flags, supported):
+    from aka.workflow.schema import planner as module
+    if kind == "managed":
+        root = writer.request.directory.parent / "managed-settings"
+        monkeypatch.setattr(module, "_CLAUDE_MANAGED_ROOT", root)
+        path = root / "managed-settings.json"
+    else:
+        path = Path(writer.environment["HOME"]) / ".claude/remote-settings.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    original = json.dumps({"env": {"CLAUDE_CODE_MODEL_CAPABILITIES": "qwen3.8-max=" + flags}}).encode()
+    path.write_bytes(original)
+    if supported:
+        assert initial(writer).status == "replace"
+        assert settings(writer.calls[0])["env"]["CLAUDE_CODE_MODEL_CAPABILITIES"].endswith(
+            ";qwen3.8-max=-adaptive_thinking,-effort")
+    else:
+        with pytest.raises(ValueError, match="managed thinking or effort"):
+            writer.planner.design(writer.request)
+        assert not writer.request.directory.exists() and not writer.calls
+        assert writer.state.data["counts"]["agent_calls"] == 0
+    assert path.read_bytes() == original

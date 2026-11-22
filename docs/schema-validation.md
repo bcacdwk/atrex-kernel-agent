@@ -101,3 +101,8 @@
 - GEMM design连续三次thinking-only各32000、无draft/check；原调用受控停止并由原生owner接口结算，保留1 Agent/1 dispatch/2576.687秒及部分usage，未冒称零成本或设计成功。V0与原root保留。
 - 规划后继让中间starter/current-closure草稿更早落盘并check，最终完整性及新假设门不变；可选writer_thinking_budget_tokens仅design/optimize，默认None。显式启用时绑定具体Claude模型、有效设置及来源哈希，只覆盖当前session，Coder/reviewer/extract不变。修复了Home设置和primary agent可改变模型、大小写cap selector等反例；普通现有设置仍支持，无法证明的动态选择明确拒绝，不禁用CLI设置来源。
 - 修订相关187项、最后66项预算检查及14默认设置来源CLI用例通过（组合重叠）；七个原审计反例在intent/admission前拒绝，主代理另复验最后六项定点通过。当前真实GEMM配置只读校验支持8192；上述CLI使用隔离loopback假服务，真实provider接受度、工具能力和设计效果仍待后继实测。
+- eddc8cb 后继四包及独立安装194项、14默认来源CLI用例、7原反例、实际sandbox三配置通过；实际新解释器导入及原root/Task/十形状/V0/材料/消费保持已核。GEMM独立版本安装未改运行中的vector d3；原材料只作为冻结数据复用，未引入旧代码。
+- 21:28 UTC同根后继实际发送 enabled/8192、高effort、32000，Qwen以HTTP400 InvalidParameter明确拒绝 thinking_budget 与 reasoning_effort 同时设置。框架三次有界尝试全部结算，新增3 Agent/0 GPU派发/约11.084秒，未产设计；不把离线wire通过当provider接受。旧调用、V0和原账均保留。
+- 协议修复仅在writer固定预算模式对当前模型追加 -effort，保持非零budget/model/输出上限，其他角色/default不变；mode=fixed_budget_without_effort进入新intent及writer capture。181项CPU、19个完整原CLI参数的隔离场景和7个旧冲突门通过；真实provider尚待验证。单独省略CLI effort参数仍会继承用户effort，故不能替代此明确模式。
+- vector继续同design v2四Episode窗口：Episode2新CCC候选完整Eval通过，但pivot/source-not-qualified，未晋升；Episode3仍实现中。冻结hardware.md仅声明L20D，root/dispatch明确微架构未知；实际sm_103/(10,3)为新增观察，无与冻结其他SM/架构冲突。
+- Dev19→20出现完整相同冻结request/digest、不同request_id的新提交，原Dev physical unknown且replay_allowed=false；replacement效果审查为明确待核。另Eval22新候选被HTTP400 invalid_source拒绝，原cause为Forbidden name: getattr，但实际Coder反馈丢失此可修诊断、candidate_repairable=false。两问题已保留原证据，未通过修改状态掩盖，待单独修复。

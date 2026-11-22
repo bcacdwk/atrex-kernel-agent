@@ -243,22 +243,26 @@ def _writer_thinking_settings(environment, config, *, workspace, isolated=False)
                 continue
         for flag in (flags if delimiter else entry).split(","):
             flag = flag.strip()
-            if flag.lstrip("-") in {"thinking", "adaptive_thinking"}:
+            if flag.lstrip("-") in {"thinking", "adaptive_thinking", "effort"}:
                 capability_flags[flag.lstrip("-")] = not flag.startswith("-")
     if capability_flags.get("thinking") is False:
         raise ValueError("writer thinking budget conflicts with the model's disabled thinking capability")
-    if capability_flags.get("adaptive_thinking") is not False and any(
+    if any(capability_flags.get(flag) is not False for flag in ("adaptive_thinking", "effort")) and any(
             row.get("source", "").startswith(("managed", "remote"))
             and "CLAUDE_CODE_MODEL_CAPABILITIES" in row for row in metadata):
-        raise ValueError("writer thinking cannot override a managed adaptive thinking selection")
+        raise ValueError("writer thinking cannot override a managed thinking or effort selection")
     # Claude applies matching capability entries in order. Append an exact model
     # selector so unrelated capabilities/models retain their original settings.
+    # Fixed budgets replace qualitative effort for this writer session. The CLI
+    # can derive effort from its defaults or user settings even without --effort;
+    # disabling the selected model's effort capability omits it from the wire.
     values["CLAUDE_CODE_MODEL_CAPABILITIES"] = (
-        capabilities + (";" if capabilities else "") + model + "=-adaptive_thinking")
+        capabilities + (";" if capabilities else "") + model + "=-adaptive_thinking,-effort")
     values["MAX_THINKING_TOKENS"] = str(config.writer_thinking_budget_tokens)
     settings = {**settings, "env": values}
     encoded = _json(settings).decode()
-    return {"model": selected, "settings_sha256": _digest(encoded.encode()), "settings_sources": sources}, {
+    return {"model": selected, "mode": "fixed_budget_without_effort",
+        "settings_sha256": _digest(encoded.encode()), "settings_sources": sources}, {
         "ATREX_CLAUDE_SESSION_SETTINGS": encoded}
 
 
@@ -418,6 +422,7 @@ def invoke_role(agent, *, workspace: Path, observations_directory: Path,
                     workspace=workspace, isolated=bool(session.environment.get("ATREX_AGENT_PREPARED_HOME")))
                 if identity != writer_thinking:
                     raise ValueError("writer thinking model or settings changed after operation intent")
+                durable_write_json(observations_directory / "writer-thinking.json", identity)
                 invocation["environment"] = override
             result = session.invoke(prompt, **invocation)
             retain(result)

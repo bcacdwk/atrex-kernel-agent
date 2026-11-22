@@ -99,6 +99,7 @@ hardware, closure and publication checks remain unchanged.
 
 The optional Planner setting `"writer_thinking_budget_tokens": 8192` requests a
 fixed per-response thinking budget only for design/optimize sessions on the Claude backend.
+In this mode the fixed budget replaces qualitative reasoning effort for the writer.
 It defaults to `null` (no override), accepts integers from 1024 through 16384,
 and requires a concrete model selection that agrees across the native environment,
 inline settings and relevant files in the native session's Linux filesystem view.
@@ -113,15 +114,23 @@ settings precedence or disable settings sources. Extraction, qualification and
 Coder sessions keep their existing settings. The writer preserves the original
 capability string and appends an override only for the selected model, normalizing
 the selector's case and context suffix without changing the actual model name.
-It does not change reasoning effort, the output-token setting, timeout or root
-allowance. The pinned CLI has been verified against an isolated local fake
-provider to send the requested fixed budget; acceptance and effectiveness by a
-real provider still require validation. A starting value of 8192 is an optional
-experiment, not a guarantee of output or successful design.
+The override disables that model's `adaptive_thinking` and `effort` capabilities
+for the writer session: the pinned CLI sends `thinking.type=enabled` with the
+requested budget and omits `output_config.effort`, even when CLI defaults or user
+settings specify effort. The configured effort and settings remain unchanged
+for other roles and for the default `null` budget. The output-token setting,
+timeout and root allowance are unchanged. A real provider rejected the earlier
+combination of fixed budget and qualitative effort; the revised request has
+been verified against an isolated local fake provider. Real acceptance and
+effectiveness of the revised request still require validation; failures do not
+authorize a silent model or thinking-mode change. A starting value of 8192 is an
+optional experiment, not a guarantee of output or successful design.
 
-The budget, concrete model selection, settings-file hashes and merged inline
-settings digest are bound to the writer operation; the override is in the actual
-admitted command. Changed configuration or model/settings sources cannot replay
+The `fixed_budget_without_effort` mode, budget, concrete model selection,
+settings-file hashes and merged inline settings digest are bound to the writer
+operation; its native observation directory also retains `writer-thinking.json`
+with the mode and nonsecret identity. The override is in the actual admitted
+command. Changed configuration or model/settings sources cannot replay
 an old intent; settle its original owner and use
 the existing explicit succession/recovery procedure. Existing intents are never
 rewritten to adopt the new setting.
