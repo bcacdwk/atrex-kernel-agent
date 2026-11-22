@@ -70,6 +70,26 @@ def submit_prepared(args, workspace, grace, prepared):
                 payload=request, timeout=args.timeout, queue_wait_grace=grace)
         elif executable is None:
             raise FileNotFoundError("agate not found and no explicit --url was provided")
+        elif kind == "run" and request.get("idempotency_key"):
+            # Typed eval CLI reconstruction has no caller-key option. The
+            # existing raw Eval API preserves the frozen request and stable key.
+            import hashlib
+            wire = json.dumps(request, sort_keys=True, separators=(",", ":"), allow_nan=False)
+            with tempfile.TemporaryDirectory(prefix="aka-submission-") as temp:
+                payload = Path(temp) / "request.json"
+                payload.write_text(wire, encoding="utf-8")
+                argv = [executable, "submit", str(payload),
+                        "--http-timeout", str(transport.MAX_HTTP_REQUEST_TIMEOUT)]
+                if args.url:
+                    argv += ["--url", args.url]
+                elif args.gateway_profile:
+                    argv += ["--profile", args.gateway_profile]
+                process = transport._run_agate_with_cancel_retry(agate=argv, executable=executable,
+                    url=args.url, gateway_profile=args.gateway_profile,
+                    command_timeout=transport._gateway_job_timeout(args.timeout, grace),
+                    wait_budget=client_wait_timeout(args.timeout, grace), operation=kind,
+                    request_identity=hashlib.sha256(wire.encode()).hexdigest(),
+                    idempotency_key=request["idempotency_key"])
         else:
             with tempfile.TemporaryDirectory(prefix="aka-submission-") as temp:
                 directory = Path(temp)

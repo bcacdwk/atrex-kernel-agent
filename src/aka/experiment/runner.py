@@ -370,10 +370,37 @@ class LegacyExperiment:
             if command.on_observation is not None:
                 command.on_observation(value)
         key = command.idempotency_key
-        if command.source_archives and key is None:
+        inline_eval = (command.submission is not None and not command.source_archives
+                       and command.operation in {"run", "same_allocation_abba"})
+        if (command.source_archives or inline_eval) and key is None:
             import hashlib
             key = "experiment:" + hashlib.sha256(json.dumps([ref.as_dict(), attempt_id],
                 sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        if inline_eval:
+            import hashlib
+            # Retain the key before entering Execution, independently of its
+            # asynchronous fact pipe. The immutable prepared bytes plus timeout
+            # determine the raw Eval request; a reused attempt cannot change them.
+            binding = {"schema_version": 1, "attempt_id": attempt_id, "idempotency_key": key,
+                "operation": command.operation, "timeout": command.timeout,
+                "submission_sha256": hashlib.sha256(command.submission).hexdigest(),
+                "environment_sha256": hashlib.sha256(json.dumps(dict(command.environment),
+                    sort_keys=True, separators=(",", ":")).encode()).hexdigest()}
+            record = records.get(ref)
+            retained = [json.loads(records.read_artifact(item)) for item in record.artifacts
+                        if item.role == "submission_intent"]
+            previous = [item for item in retained if item.get("attempt_id") == attempt_id]
+            if previous:
+                if any(item != binding for item in previous):
+                    raise ExperimentRecordError("submission_identity_mismatch", ref)
+            else:
+                attempt = next((item for item in record.attempts if item.attempt_id == attempt_id), None)
+                if attempt is None or attempt.disposition != "intent":
+                    raise ExperimentRecordError("submission_intent_missing", ref)
+                if not any(item.sha256 == binding["submission_sha256"] for item in record.artifacts):
+                    records.publish_content(ref, command.submission, "evaluation_input")
+                records.publish_content(ref, json.dumps(binding, sort_keys=True,
+                    separators=(",", ":"), allow_nan=False).encode(), "submission_intent")
         return replace(command, on_observation=observe, idempotency_key=key)
 
     def _run_command(self, command, *, records=None, ref=None, resume=None):

@@ -1932,11 +1932,12 @@ def _submitted_job_id(proc: subprocess.CompletedProcess[str]) -> str | None:
 
 def _track_agate_job(
     job_id: str, executable: str, url: str, gateway_profile: str | None, operation: str = "unknown",
-    request_identity: str = "",
+    request_identity: str = "", idempotency_key: str | None = None,
 ) -> None:
     endpoint, profile = _submission_route(url, gateway_profile)
     emit_fact({"event": "submitted", "identifier": job_id, "backend": "gateway", "operation": operation,
-               "endpoint": endpoint, "profile": profile, "request_identity": request_identity})
+               "endpoint": endpoint, "profile": profile, "request_identity": request_identity,
+               "idempotency_key": idempotency_key})
     with ACTIVE_AGATE_JOBS_LOCK:
         ACTIVE_AGATE_JOBS[job_id] = (executable, endpoint, profile)
 
@@ -2102,6 +2103,9 @@ def _run_agate_once_unchecked(
     gateway_profile: str | None,
     command_timeout: int,
     wait_budget: int | None,
+    operation: str | None = None,
+    request_identity: str | None = None,
+    idempotency_key: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Submit one agate job, then wait while keeping its id available for cleanup."""
     wait_started = time.monotonic()
@@ -2109,7 +2113,7 @@ def _run_agate_once_unchecked(
     # jobs reach its GPU queue. Serialize only this short admission phase across
     # local sandbox processes; release before polling so GPU jobs remain parallel.
     endpoint = url or gateway_profile or os.environ.get("AGATE_URL") or "default"
-    key = hashlib.sha256(endpoint.encode()).hexdigest()[:16]
+    lock_key = hashlib.sha256(endpoint.encode()).hexdigest()[:16]
     files = []
     for argument in agate[2:]:
         path = Path(argument.split("=", 1)[-1])
@@ -2118,9 +2122,9 @@ def _run_agate_once_unchecked(
                 files.append((argument, hashlib.sha256(path.read_bytes()).hexdigest()))
         except (OSError, ValueError):
             pass
-    identity = hashlib.sha256(json.dumps({"argv": agate, "files": files}, sort_keys=True).encode()).hexdigest()
-    emit_fact({"event": "submission_intent", "request_identity": identity, "idempotency_key": None})
-    lock_path = Path(tempfile.gettempdir()) / f"atrex-agate-submit-{os.getuid()}-{key}.lock"
+    identity = request_identity or hashlib.sha256(json.dumps({"argv": agate, "files": files}, sort_keys=True).encode()).hexdigest()
+    emit_fact({"event": "submission_intent", "request_identity": identity, "idempotency_key": idempotency_key})
+    lock_path = Path(tempfile.gettempdir()) / f"atrex-agate-submit-{os.getuid()}-{lock_key}.lock"
     with lock_path.open("a") as admission:
         fcntl.flock(admission, fcntl.LOCK_EX)
         remaining = MAX_HTTP_REQUEST_TIMEOUT if wait_budget is None else wait_budget - (time.monotonic() - wait_started)
@@ -2136,7 +2140,7 @@ def _run_agate_once_unchecked(
     job_id = job.get("job_id") if job else _submitted_job_id(submitted)
     if not isinstance(job_id, str) or not job_id:
         return submitted
-    _track_agate_job(job_id, executable, url, gateway_profile, agate[1], identity)
+    _track_agate_job(job_id, executable, url, gateway_profile, operation or agate[1], identity, idempotency_key)
     endpoint, profile = _submission_route(url, gateway_profile)
     try:
         completed = _resume_interrupted_agate_wait(
@@ -2165,10 +2169,14 @@ def _run_agate_with_cancel_retry(
     gateway_profile: str | None,
     command_timeout: int,
     wait_budget: int | None,
+    operation: str | None = None,
+    request_identity: str | None = None,
+    idempotency_key: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Submit once; Experiment owns any new measurement attempt."""
     return _run_agate_once(agate=agate, executable=executable, url=url,
-        gateway_profile=gateway_profile, command_timeout=command_timeout, wait_budget=wait_budget)
+        gateway_profile=gateway_profile, command_timeout=command_timeout, wait_budget=wait_budget,
+        operation=operation, request_identity=request_identity, idempotency_key=idempotency_key)
 
 
 def _typed_agate_command(
@@ -2998,7 +3006,7 @@ def _run_agate_once(*args, **kwargs):
     from .protocol import classify_gateway_outcome, protocol_failure
     from aka.execution.outcomes import observe_attempt
     agate = kwargs.get("agate", ())
-    operation = agate[1] if len(agate) > 1 else "unknown"
+    operation = kwargs.get("operation") or (agate[1] if len(agate) > 1 else "unknown")
     with backend_attempt(operation):
         process = _run_agate_once_unchecked(*args, **kwargs)
         observe_attempt(process, operation=operation)
