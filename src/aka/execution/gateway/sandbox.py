@@ -2287,7 +2287,7 @@ def _typed_agate_command(
     return command
 
 
-def _main(argv: list[str] | None = None, *, parsed_arguments=None) -> int:
+def _main(argv: list[str] | None = None, *, parsed_arguments=None, before_submission=lambda: None) -> int:
     args = build_parser().parse_args(argv) if parsed_arguments is None else parsed_arguments
     if not args.hardware:
         raise SystemExit("sandbox: --hardware or ATREX_SANDBOX_GPU is required")
@@ -2368,6 +2368,7 @@ def _main(argv: list[str] | None = None, *, parsed_arguments=None) -> int:
         if not args.ssh:
             raise SystemExit("sandbox: --check-health/--preflight requires --ssh")
         try:
+            before_submission()
             health = _run_ssh_health(
                 args.ssh,
                 args.ssh_init,
@@ -2423,9 +2424,11 @@ def _main(argv: list[str] | None = None, *, parsed_arguments=None) -> int:
 
     if args.prepared_request_fd is not None:
         from .submission import run_prepared
+        before_submission()
         return run_prepared(args, workspace, sync_paths, queue_wait_grace)
     if args.kind in {"check", "disassemble"}:
         from .submission import run_kernel_operation
+        before_submission()
         return run_kernel_operation(args, workspace, queue_wait_grace)
     gateway_kind = "dev"
     evaluator_command = _is_test_kernel_command(args.command)
@@ -2706,6 +2709,7 @@ def _main(argv: list[str] | None = None, *, parsed_arguments=None) -> int:
                 shutil.copy2(source, destination)
                 upload_paths.append(destination)
             try:
+                before_submission()
                 ssh_result = _run_ssh_job(
                     target=args.ssh,
                     init_command=args.ssh_init,
@@ -2807,6 +2811,7 @@ def _main(argv: list[str] | None = None, *, parsed_arguments=None) -> int:
                         for index, path in enumerate(runtime_part_paths)
                     }
                 )
+                before_submission()
                 proc = _run_direct_gateway(
                     url=args.url,
                     hardware=args.hardware,
@@ -2829,6 +2834,7 @@ def _main(argv: list[str] | None = None, *, parsed_arguments=None) -> int:
                 ) from exc
         else:
             try:
+                before_submission()
                 proc = _run_agate_with_cancel_retry(
                     agate=agate,
                     executable=agate_executable or "agate",
@@ -2946,9 +2952,15 @@ def main(argv: list[str] | None = None, *, parsed_arguments=None) -> int:
         operation_id=operation_id,
         category=category,
     )
+    submission_started = False
+    def before_submission():
+        nonlocal submission_started
+        # Mark before entering a transport that may upload or submit. Even a
+        # lost response with no JobRef must remain unknown beyond this point.
+        submission_started = True
+        emit_fact({"event": "submission_started"})
     try:
-        returncode = (_main(argv) if parsed_arguments is None
-                      else _main(argv, parsed_arguments=parsed_arguments))
+        returncode = _main(argv, parsed_arguments=parsed_arguments, before_submission=before_submission)
     except SSHGPUBusy as exc:
         emit_diagnostic({"failure_class": "infrastructure", "reason": "ssh_gpu_busy"})
         print(json.dumps({'status': 'failed', 'error': {'reason': 'ssh_gpu_busy',
@@ -2967,6 +2979,8 @@ def main(argv: list[str] | None = None, *, parsed_arguments=None) -> int:
         )
         raise
     finally:
+        if not submission_started:
+            emit_fact({"event": "launcher_not_submitted"})
         for signum, handler in previous_handlers.items():
             signal.signal(signum, handler)
     _append_sandbox_telemetry(

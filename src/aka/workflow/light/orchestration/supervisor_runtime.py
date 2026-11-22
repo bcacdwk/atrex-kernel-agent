@@ -783,6 +783,8 @@ class SupervisorRuntime:
                     filesystem_access=self._request_access(capability, staged)
                         if converted.request.submission is None else converted.request.filesystem_access)
             self._measurement_environment(command)
+            if execution_timeout is None:
+                command = replace(command, timeout=self.executor.default_command_timeout(command))
             command, request_digest = self._retained_request(command)
             request_id = "trusted-" + request_digest if capability.request_id == "acceptance" else capability.request_id
             response = self._execute_measurement(command, request_digest=request_digest, request_id=request_id,

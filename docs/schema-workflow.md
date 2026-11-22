@@ -134,6 +134,19 @@ evidence from the original owner before the controller can clear an unknown
 model call. The public CLI resumes ordinary retained work, but does not provide
 an operator command for this explicit repair acknowledgement.
 
+For the diagnosed Legacy Dev timeout/admission failures recorded by older
+versions, the original host owner can explicitly call
+`LegacyExperiment.settle_unsubmitted(ref, attempt_id, receipt=..., evidence=...)`.
+It requires the exact old record, stopped original process identities and
+audited pre-submission evidence, and preserves the original record and proof as
+private artifacts. Missing JobRefs alone are insufficient. After the original
+Experiment is settled, `SchemaWorkflow.settle_unsubmitted_execution(...)` can
+settle its matching existing permit without refunding dispatch consumption.
+This narrow repair is unavailable to Agent tools and does not resubmit work.
+Current managed defaults respect the selected backend's Dev timeout limit;
+explicit incompatible deadlines are rejected before dispatch. Typed evaluation
+and the Schema root limits retain their separate budgets.
+
 Use a separate workspace for a finite diagnostic such as four Episodes; a
 finished diagnostic is intentionally terminal. Start the continuous campaign
 only after its configuration and observed behavior are accepted, retaining a

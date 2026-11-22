@@ -69,6 +69,11 @@ class SandboxExecutor:
         from .environment_query import match_environment
         return match_environment(query, self.query_environment(query))
 
+    def default_command_timeout(self, command):
+        """Let the selected backend constrain an inherited host default."""
+        resolve = getattr(self.executor, "default_command_timeout", None)
+        return resolve(command) if callable(resolve) else command.timeout
+
     def run(self, command: CommandSpec) -> JobResult:
         from .filesystem_scope import bound_command
         bound = bound_command(self.context, command)

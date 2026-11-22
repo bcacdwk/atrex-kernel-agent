@@ -985,6 +985,52 @@ class SchemaWorkflow:
         self.state.save()
         return result
 
+    def settle_unsubmitted_execution(self, permit, *, campaign, experiment_ref, attempt_id, reason):
+        """Settle one consumed permit from its original owner's explicit receipt."""
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("A concrete original-owner diagnosis is required")
+        with self.state.owned():
+            if str(campaign.workspace.absolute()) != self.state.config["workspace"]:
+                raise RecoveryRequired("Execution recovery belongs to another native workspace")
+            records = [item for item in campaign.experiment_records() if item.ref == experiment_ref]
+            if len(records) != 1:
+                raise RecoveryRequired("Original Experiment is unavailable")
+            record, = records
+            if (record.ref.run_id != str(campaign.workspace.resolve()) or record.lifecycle != "terminal"
+                    or len(record.attempts) != 1 or len(record.steps) != 1):
+                raise RecoveryRequired("Original Experiment is not a settled single-attempt owner")
+            attempt, = record.attempts
+            result = attempt.result
+            if (attempt.attempt_id != attempt_id or attempt.disposition != "not_submitted" or result is None
+                    or result.facts.disposition != "not_submitted" or result.facts.local_stopped is not True
+                    or result.attempts or result.job_references or result.exit_code is not None or result.file_receipts
+                    or "original-owner-confirmed-not-submitted" not in result.facts.basis):
+                raise RecoveryRequired("Original owner has no explicit pre-submission settlement")
+            receipts = [item for item in record.artifacts if item.role == "unsubmitted-owner-receipt"]
+            if (len(receipts) != 1 or not any(item.code == "original-owner-unsubmitted"
+                    and item.details.get("receipt_sha256") == receipts[0].sha256 for item in result.diagnostics)):
+                raise RecoveryRequired("Original owner settlement receipt is missing")
+            data = self.state.data
+            call = data["calls"].get(permit)
+            step, = record.steps
+            owner = {"workspace": record.request.get("workspace"), "operation": step.operation,
+                "hardware": step.hardware, "timeout": step.timeout, "command_digest": digest(list(step.argv))}
+            if (call is None or call["kind"] != "execution" or call["owner"] != owner or call["job_references"]):
+                raise RecoveryRequired("Original admission and Experiment identities differ")
+            proof = {"experiment": experiment_ref.as_dict(), "attempt_id": attempt_id,
+                "receipt_sha256": receipts[0].sha256}
+            settlements = data.get("unsubmitted_execution_settlements", {})
+            if permit in settlements:
+                if settlements[permit]["evidence"] != proof or call["state"] != "settled":
+                    raise RecoveryRequired("Original execution settlement changed")
+                return
+            if call["state"] != "unknown":
+                raise RecoveryRequired("Execution permit is not awaiting owner reconciliation")
+            settlements[permit] = {"evidence": proof, "reason": reason}
+            data["unsubmitted_execution_settlements"] = settlements
+            call.update(state="settled", disposition="not_submitted", transport_status=result.transport_status)
+            self.state.save()
+
     def resume_after_repair(self, reason, *, preparation_campaign=None):
         """Record explicit repair without refunding usage or inventing admission.
 

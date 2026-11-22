@@ -85,6 +85,12 @@ class GatewayExecutor(GatewayRecoveryMixin):
     def check_environment(self, query):
         return self._environment_backend().check(query)
 
+    def default_command_timeout(self, command):
+        from aka.execution.environment_query import command_query
+        from .requests import command_timeout
+        support = self._environment_backend(command.environment).check(command_query(command), discover=False)
+        return command_timeout(command, support, default=True)
+
     def run(self, command):
         if self._dispatch_scope is not None and self._dispatch_scope.closed:
             raise RuntimeError("Gateway dispatch scope has been closed")
@@ -127,6 +133,13 @@ class GatewayExecutor(GatewayRecoveryMixin):
         # discovery. Evaluation requires its complete SDK comparison receipt;
         # any explicit unsupported dimension still rejects before submission.
         require_supported(support)
+        from .requests import command_timeout
+        try:
+            command_timeout(command, support)
+        except ValueError as error:
+            from aka.execution.outcomes import local_rejection
+            error.execution_outcome = local_rejection(self.resource_identity, command.hardware, "invalid-command-timeout")
+            raise
         if type(command.timeout) is not int or command.timeout <= 0:
             raise ValueError("execution timeout must be a positive integer")
         argv = [sys.executable, "-m", "aka.execution.gateway.entrypoint",
@@ -192,7 +205,12 @@ class GatewayExecutor(GatewayRecoveryMixin):
         if scope is not None:
             if scope.closed:
                 raise RuntimeError("Gateway dispatch scope has been closed")
-            permit = scope.admit(command=command)
+            try:
+                permit = scope.admit(command=command)
+            except BaseException as error:
+                from aka.execution.outcomes import local_rejection
+                error.execution_outcome = local_rejection(self.resource_identity, command.hardware, "dispatch-not-admitted")
+                raise
         try:
             result = run_owned(argv, environment=environment, workspace=command.workspace,
                 timeout=wait_timeout, resource=self.resource_identity,

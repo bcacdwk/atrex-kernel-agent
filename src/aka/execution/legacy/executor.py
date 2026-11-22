@@ -107,6 +107,12 @@ class LegacyExecutor(GatewayRecoveryMixin):
     def check_environment(self, query):
         return self._environment_backend().check(query)
 
+    def default_command_timeout(self, command):
+        from aka.execution.environment_query import command_query
+        from aka.execution.gateway.requests import command_timeout
+        support = self._environment_backend().check(command_query(command), discover=False)
+        return command_timeout(command, support, default=True, ssh=bool(self.request and self.request.ssh))
+
     def run(self, command: CommandSpec) -> JobResult:
         if self._dispatch_scope is not None and self._dispatch_scope.closed:
             raise RuntimeError("Legacy dispatch scope has been closed")
@@ -134,7 +140,13 @@ class LegacyExecutor(GatewayRecoveryMixin):
         # its env endpoint need not enumerate operations. Evaluation validates
         # the complete SDK comparison receipt. SSH still needs backend proof.
         require_supported(support, require_known=command.operation == NATIVE_ABBA and bool(self.request.ssh))
-        from aka.execution.gateway.requests import bound_limits
+        from aka.execution.gateway.requests import bound_limits, command_timeout
+        try:
+            command_timeout(command, support, ssh=bool(self.request.ssh))
+        except ValueError as error:
+            from aka.execution.outcomes import local_rejection
+            error.execution_outcome = local_rejection(self.resource_identity, command.hardware, "invalid-command-timeout")
+            raise
         def observed(result):
             if command.on_observation is not None:
                 command.on_observation(replace(result, environment_snapshot=support.environment,
@@ -252,9 +264,14 @@ class LegacyExecutor(GatewayRecoveryMixin):
         if scope is not None:
             if scope.closed:
                 raise RuntimeError("Legacy dispatch scope has been closed")
-            permit = scope.admit(command=dispatch_command or CommandSpec(
-                workspace, tuple(command), environment=request.environment, hardware=hardware,
-                timeout=timeout, operation=gateway_kind, submission=request.submission))
+            try:
+                permit = scope.admit(command=dispatch_command or CommandSpec(
+                    workspace, tuple(command), environment=request.environment, hardware=hardware,
+                    timeout=timeout, operation=gateway_kind, submission=request.submission))
+            except BaseException as error:
+                from aka.execution.outcomes import local_rejection
+                error.execution_outcome = local_rejection(self.resource_identity, hardware, "dispatch-not-admitted")
+                raise
         def decorate(result):
             return replace(result, budgets=(*result.budgets,
                 *wait_budget_records(effective_timeout, scope="local-wait", emit=False)))

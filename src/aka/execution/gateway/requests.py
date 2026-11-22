@@ -132,3 +132,20 @@ def bound_limits(environment, support):
     limits = support.environment.declarations.get("limits", {})
     environment[LIMITS_ENV] = json.dumps(environment_document(limits), sort_keys=True)
     return environment
+
+
+def command_timeout(command, support, *, default=False, ssh=False):
+    """Resolve a host default against the actual portable Dev route.
+
+    A typed Eval/Profile retains its own budget. Explicit command deadlines are
+    never silently shortened, including those supplied by trusted controllers.
+    """
+    if (ssh or command.submission is not None
+            or command.operation not in {"auto", "run", "profile", "dev"}):
+        return command.timeout
+    limit = hard_limit(bound_limits({}, support), "dev")
+    if limit is not None and command.timeout > limit:
+        if default:
+            return limit
+        raise UnsupportedExecution(f"Dev timeout {command.timeout}s exceeds backend limit {limit}s")
+    return command.timeout

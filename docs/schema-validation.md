@@ -51,3 +51,10 @@
 - 本任务已于12:52 UTC受控中断首个optimize，所有本任务进程退出，无新D/GPU；原调用保留unknown/KeyboardInterrupt与267.184544秒，V0原owner终态。后继版本需核原owner证据并明确resume_after_repair，旧快照/已用预算不清零。
 
 后续补充真实轮次、正确性/性能、停止或恢复原因与观察时长；凭据和原始大日志不入库。
+
+### 真实 E/D 与 Dev 边界
+
+- b3508c0 显式恢复后，原中断调用按证据结算、原V0漏计仅更正一次，checkpoint未改/V0未重测。optimize正常发布设计v2，真实Coder收到固定root/dispatch/设计身份与Planner动作。
+- vector新候选完成3形状、18 correctness cases及每形状20 performance samples；当前测量7.1733055796微秒，但comparability unknown，不能称正式提升。eval与disassemble原作业均已停止/清理完成；尚未资格晋升或结束Episode。
+- Dev请求继承3600秒而后端上限1800，在本地构造提交参数前失败，却保留unknown并阻断后续。修复操作默认限额及结构化not_submitted事实；原owner可凭精确旧记录/停止/调用顺序证据显式结算单attempt，Schema核同原permit，不退款，不把无JobRef等同未提交。新15项、既有native组合38项及控制器等60项检查通过（组合重叠）。
+- 无SOTA GEMM的新V0已通过10形状、60正确性case，目标L20D和评测器身份吻合，准入计量正常。其design两次仅thinking耗尽32000输出且无候选；原调用已受控停止并留存成本，准备同Qwen/同任务/同验收、仅Planner effort改high的独立配置试验。旧根不改，新试验调用/派发额度扣除旧根已证实消费。

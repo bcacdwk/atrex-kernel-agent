@@ -67,6 +67,15 @@ class LegacyExperiment:
     def unresolved(self):
         return self._records().unresolved()
 
+    def settle_unsubmitted(self, ref, attempt_id, *, receipt: bytes, evidence: bytes):
+        """Apply an explicit original-owner receipt to one diagnosed local failure.
+
+        The owner must establish stopped processes and the pre-submission call
+        boundary from retained evidence. This never queries, submits or retries.
+        """
+        from .unsubmitted import settle
+        return settle(self._records(), ref, attempt_id, receipt=receipt, evidence=evidence)
+
     def read_artifact(self, artifact):
         return self._records().read_artifact(artifact)
 

@@ -284,9 +284,18 @@ def captured_result(process, *, resource, hardware="", records=(), status=None,
     if attempts and all(item.disposition != "unknown" for item in attempts):
         disposition = "terminal" if any(item.disposition == "terminal" for item in attempts) else "not_submitted"
         termination = attempts[-1].termination if disposition == "terminal" else None
-    if not attempts and diagnostics and all(item.category in {"request", "authentication"} for item in diagnostics):
+    submission_entered = bool(submitted) or any(record.get("event") in {
+        "submission_started", "submission_intent", "attempt_started"} for record in records)
+    if (not attempts and not submission_entered and diagnostics
+            and all(item.category in {"request", "authentication"} for item in diagnostics)):
+        disposition = "not_submitted"
+    preparation_only = (local_stopped and not attempts and not submitted
+        and any(record.get("event") == "launcher_not_submitted" for record in records)
+        and not submission_entered)
+    if preparation_only:
         disposition = "not_submitted"
     if any(record.get("event") == "invalid" for record in records):
+        preparation_only = False
         disposition, termination = "unknown", None
         diagnostics += (ExecutionDiagnostic("protocol", "invalid-fact-channel"),)
     if status is None:
@@ -332,11 +341,19 @@ def captured_result(process, *, resource, hardware="", records=(), status=None,
         resource=resource, transport_status=status,
         facts=ExecutionFacts(disposition, termination, cancelled, local_stopped,
             remote_terminated, cleanup, tuple(cleanup_errors),
-            ("launcher-reaped",) if local_stopped else (), remote_cleanup),
+            (("launcher-reaped",) if local_stopped else ())
+                + (("launcher-before-submission",) if preparation_only else ()), remote_cleanup),
         attempts=tuple(attempts), diagnostics=diagnostics, hardware=hardware,
         causes=tuple(cause for attempt in attempts for cause in attempt.causes),
         job_references=tuple(job_references), budgets=tuple(budgets),
     )
+
+
+def local_rejection(resource, hardware, basis):
+    """Evidence supplied only at a host branch that has not called a launcher."""
+    return JobResult(1, resource=resource, hardware=hardware, transport_status="rejected",
+        facts=ExecutionFacts("not_submitted", local_stopped=True, cleanup="not_required", basis=(basis,)),
+        diagnostics=(ExecutionDiagnostic("request", basis),))
 
 
 def run_owned(argv, *, environment, workspace, timeout, resource, hardware="",
