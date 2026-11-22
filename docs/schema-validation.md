@@ -1,6 +1,6 @@
 # Schema 实施与运行验证记录
 
-当前阶段：实现提交 `035e932` 后，发布修复 `51e8549` 已投入诊断。真实V0已通过并进入optimize调用，随后发现原生预绑定执行器的准入/反馈缺口，正在修复；尚未形成完整D/E闭环或多日稳定证据。本文件保留简要问题与修复证据，原始日志外置。
+当前阶段：五轮实现及清理已提交，真实实验已推进到 `246ba5c`。已有 kernel 的链路完成 optimize、实现与同卡性能对比，首轮因 Schema 审查输出格式无效而未晋升；无 SOTA GEMM 仍在 design。尚未形成完整 D/E 闭环或多日稳定证据。本文件保留简要问题与修复证据，原始日志外置。
 
 ## 正式目标
 
@@ -58,3 +58,11 @@
 - vector新候选完成3形状、18 correctness cases及每形状20 performance samples；当前测量7.1733055796微秒，但comparability unknown，不能称正式提升。eval与disassemble原作业均已停止/清理完成；尚未资格晋升或结束Episode。
 - Dev请求继承3600秒而后端上限1800，在本地构造提交参数前失败，却保留unknown并阻断后续。修复操作默认限额及结构化not_submitted事实；原owner可凭精确旧记录/停止/调用顺序证据显式结算单attempt，Schema核同原permit，不退款，不把无JobRef等同未提交。新15项、既有native组合38项及控制器等60项检查通过（组合重叠）。
 - 无SOTA GEMM的新V0已通过10形状、60正确性case，目标L20D和评测器身份吻合，准入计量正常。其design两次仅thinking耗尽32000输出且无候选；原调用已受控停止并留存成本，准备同Qwen/同任务/同验收、仅Planner effort改high的独立配置试验。旧根不改，新试验调用/派发额度扣除旧根已证实消费。
+
+### 审查协议与有效进展
+
+- `246ba5c` 显式继承安装后，旧本地未提交记录依证据结算，派发和调用消费保留，原 V0 未重测。真实 Dev 使用1800秒上限成功，Eval仍保留3600秒。
+- vector 的完整同分配 ABBA 原生 gate PASS：候选7.1325415954微秒、原基线7.5162039397微秒。后续 correctness-only 也通过。跨记录环境身份仍 unknown；这些结果尚不等于正式晋升。
+- 首轮生产策略审查接受，但 Schema reviewer 的3条 change_evidence 使用嵌套对象，未满足 source/start/end/claim 协议。原输出保留，规范结果为 unknown，未晋升；控制器自然进入第二 Episode。不能把原始未验证的 pass 转成有效结论。
+- 进展消费者仅读聚合结果、忽略 terminal attempt，并误把完整原生 ABBA 当作部分测量，导致漏认真实进展。修复复用原生记录投影及完整 Task/源码/计划绑定；区分首次有效测量、同次 ABBA 和须已知环境的跨记录比较，unknown 不冒充停滞或进展。相关136项通过，补充 Coder 确定性接线后最终82项通过（组合重叠）。原始未晋升源码只读取出及完整 ABBA 请求构造已验证，未新增 GPU 调用；旧 unknown 审查结果保持，运行安装尚未升级。
+- GEMM 的 high 独立试验真实请求已核实，V0通过10形状、60 correctness cases；截至15:47 UTC仍未产出设计，已两次 thinking-only 达到32000输出。调低 effort 尚未证明解决问题；仍需有效设计与后续 D/E 实测。

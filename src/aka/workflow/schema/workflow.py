@@ -5,7 +5,6 @@ from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import asdict, dataclass
 import json
-import math
 from pathlib import Path
 import time
 from typing import Mapping
@@ -14,6 +13,7 @@ from aka.core.active_time import ActiveBudget, budget_scope
 from aka.core.filesystem import read_regular_bytes
 from .materials import DesignRef, read_design, snapshot_ref
 from .run_state import BudgetDenied, RecoveryRequired, RunLimits, RunState, digest
+from .progress import needs_new_hypothesis
 
 
 WINDOW_EPISODES = 4
@@ -172,10 +172,13 @@ def build_feedback(state):
         "champion": data["champion"], "tested_candidate": data["tested_candidate"],
         "working_draft": data["working_draft"], "stagnant_windows": hypothesis.get("stagnant", 0),
         "milestones": hypothesis.get("milestones", []), "best_legal_measurement": hypothesis.get("best_legal"),
+        "uncertain_windows": hypothesis.get("uncertain_windows", 0),
+        "design_comparison_target": ("kernel-" + hypothesis["native_frontier"]["source"]["identity"]
+                                     if hypothesis.get("native_frontier") else None),
         "preparation_measurements": data.get("preparation_measurements", []),
-        "episodes": [{key: row.get(key) for key in ("episode", "status", "accepted", "violation", "progress", "records", "measurements")}
+        "episodes": [{key: row.get(key) for key in ("episode", "status", "accepted", "violation", "progress", "progress_assessment", "records", "measurements")}
                      for row in episodes],
-        "require_new": hypothesis.get("stagnant", 0) >= 2,
+        "require_new": needs_new_hypothesis(hypothesis),
         "diagnostics": [{"code": row["code"], "message": row["message"][:600]}
                         for row in data["diagnostics"][-3:]]}
     value = deepcopy(value)
@@ -660,7 +663,7 @@ class SchemaWorkflow:
         if frozen is None or frozen["operation_id"] != operation_id:
             frozen = {"operation_id": operation_id, "version": data["design_version"] + 1,
                 "current_design": data["design"], "feedback": [{"text": build_feedback(self.state)}] if data["design"] else [],
-                "require_new": hypothesis.get("stagnant", 0) >= 2,
+                "require_new": needs_new_hypothesis(hypothesis),
                 "sources": {role: data[role] for role in ("champion", "tested_candidate", "working_draft")
                             if data[role] is not None}}
             data["planner_request"] = deepcopy(frozen)
@@ -702,7 +705,7 @@ class SchemaWorkflow:
                                   and result.hypothesis_key != data["hypothesis"] and not same)
             if same:
                 error = "Identical design bytes are keep; replacement cannot renew a hypothesis"
-            elif data["hypotheses"].get(result.hypothesis_key, {}).get("stagnant", 0) >= 2:
+            elif needs_new_hypothesis(data["hypotheses"].get(result.hypothesis_key, {})):
                 error = "Revisiting an exhausted hypothesis retains its earlier history"
             elif request.require_new and not new_hypothesis:
                 error = "Current hypothesis is exhausted; provide a new execution decision with evidence"
@@ -719,6 +722,8 @@ class SchemaWorkflow:
             if (request.require_new or data["working_draft"] is None or not result.next_actions
                     or data["design"] is None):
                 error = "Keep requires an unexhausted hypothesis, real draft and a testable next action"
+            elif hypothesis.get("uncertain_windows", 0) and digest(list(result.next_actions)) in hypothesis.get("tried_actions", []):
+                error = "Unknown performance requires an untried evidence-gathering action or a new hypothesis"
         elif result.status == "stop":
             # Planner may close its own hypothesis, never the user's continuous
             # task. A no-design response enters bounded replanning/diagnosis.
@@ -738,6 +743,11 @@ class SchemaWorkflow:
             return
         data["planner_failures"] = 0
         data["next_actions"] = list(result.next_actions)
+        if data["hypothesis"] is not None:
+            actions = data["hypotheses"][data["hypothesis"]].setdefault("tried_actions", [])
+            key = digest(data["next_actions"])
+            if key not in actions:
+                actions.append(key)
         data["phase"], data["action"] = "implement", None
         self.state.save()
 
@@ -765,8 +775,10 @@ class SchemaWorkflow:
             number = data["counts"]["episodes"] + 1
             operation_id = self.state.action("implement")
             seed = data["working_draft"] or data["champion"]
+            frontier = data["hypotheses"][data["hypothesis"]].get("native_frontier")
             context = coder_context(DesignRef.from_dict(data["design"]), data["prepared"]["identity"], number, seed["identity"],
-                                    next_actions=data.get("next_actions", ()))
+                next_actions=data.get("next_actions", ()),
+                comparison_target="kernel-" + frontier["source"]["identity"] if frontier else None)
             binding = {"episode": number, "operation_id": operation_id, "window": window["id"],
                 "design": data["design"], "prepared_id": data["prepared"]["identity"],
                 "seed": seed, "context": context, "context_id": digest(context), "hypothesis": data["hypothesis"]}
@@ -863,13 +875,19 @@ class SchemaWorkflow:
         sealed = self.state.retain_source(facts["candidate"], owner=owner,
             origin={"episode": episode, "role": "sealed_candidate", "design": binding["design"]["identity"]}) \
             if facts["candidate"] is not None else None
-        progress = self._progress(binding, attempt, fresh, hypothesis=data["hypotheses"][binding["hypothesis"]])
+        qualification = attempt.get("candidate_qualification") or {}
+        if qualification.get("qualified") is True and (sealed is None or qualification.get("source_identity") != sealed["identity"]):
+            raise RecoveryRequired("Progress qualification differs from the sealed native source")
+        progress_assessment = {}
+        progress = self._progress(binding, attempt, fresh, hypothesis=data["hypotheses"][binding["hypothesis"]],
+            assessment=progress_assessment)
         data["champion"], data["tested_candidate"], data["working_draft"] = champion, tested, draft
         data["episodes"][str(episode)] = {"episode": episode, "binding": binding,
             "status": attempt["status"], "accepted": attempt["accepted"], "violation": attempt.get("violation"),
             "tokens": attempt.get("tokens"), "telemetry": attempt.get("telemetry"),
             "draft": draft, "sealed_candidate": sealed, "tested_candidate": tested,
-            "champion": champion, "records": records, "measurements": measurements[-8:], "progress": progress}
+            "champion": champion, "records": records, "measurements": measurements[-8:], "progress": progress,
+            "progress_assessment": progress_assessment}
         data["seen_records"] = sorted(set(data["seen_records"]) | {_record_key(record) for record in facts["records"]})
         data["window"]["episodes"].append(episode)
         data["window"]["progress"].extend(progress)
@@ -891,68 +909,150 @@ class SchemaWorkflow:
         engine.stop_episode(episode=binding["episode"], reason=reason)
         self._settle(campaign, binding, campaign.episode_facts(binding["episode"]))
 
-    def _progress(self, binding, attempt, fresh, *, hypothesis=None):
+    def _progress(self, binding, attempt, fresh, *, hypothesis=None, assessment=None):
+        from aka.evaluation.source_archives import source_artifact
+        from .progress import comparison_key, measurement_evidence, positive
+        import hashlib
         if hypothesis is None:
             hypothesis = self.state.data["hypotheses"][binding["hypothesis"]]
+        assessment = assessment if assessment is not None else {}
+        assessment.update(status="no-progress", reasons=[])
         qualified = attempt.get("candidate_qualification") or {}
         if qualified.get("qualified") is not True or qualified.get("substantive_change") is not True:
+            assessment["reasons"] = ["source-not-qualified"]
             return []
+        receipt = qualified.get("binding")
+        if receipt is not None and (receipt.get("prepared_id") != binding["prepared_id"]
+                or receipt.get("design_identity") != binding["design"]["identity"]
+                or receipt.get("source_identity") != qualified.get("source_identity")
+                or receipt.get("public_task_sha256") != hashlib.sha256(
+                    self.state.data["prepared"]["public_task"].encode()).hexdigest()
+                or receipt.get("target_hardware_sha256") != hashlib.sha256(
+                    self.state.data["prepared"]["hardware"].encode()).hexdigest()):
+            assessment["reasons"] = ["qualification-binding-mismatch"]
+            return []
+        identity = qualified.get("source_identity")
+        if identity == hypothesis["seed"]["identity"] or identity in hypothesis["seen_sources"]:
+            assessment["reasons"] = ["unchanged-or-replayed-source"]
+            return []
+        selected = [(record, source) for record, source in fresh if source["identity"] == identity
+                    and _record_key(record) not in hypothesis.get("progress_records", [])]
+        if not selected:
+            assessment["reasons"] = ["no-fresh-qualified-record"]
+            return []
+        campaign = self._campaign
+        evidence = []
+        with campaign.experiment_record_reader() as records:
+            for record, source in selected:
+                value = measurement_evidence(records, record, owner=campaign.candidate_workspace,
+                    task=campaign.problem.evaluation, hardware=campaign.sandbox_hardware)
+                if value is not None and value["source_identity"] == identity:
+                    evidence.append((record, source, value))
+        if not evidence:
+            assessment["reasons"] = ["no-complete-current-task-evidence"]
+            return []
+        # Collect all this sealed source's records before consuming it. A normal
+        # Eval, correctness-only check and ABBA can coexist in one Episode.
+        hypothesis["seen_sources"].append(identity)
+        hypothesis.setdefault("progress_records", []).extend(_record_key(record) for record, _, _ in evidence)
         progress = []
-        for record, source in fresh:
-            identity = source["identity"]
-            if identity == hypothesis["seed"]["identity"]:
+        def milestone(name):
+            if name not in hypothesis["milestones"]:
+                hypothesis["milestones"].append(name)
+                progress.append(name)
+        milestone("first-compiled")
+        milestone("first-correct")
+        performance = [(record, source, value) for record, source, value in evidence if value["performance"]]
+        if performance:
+            milestone("first-qualified-full-measurement")
+        threshold = float(getattr(campaign, "min_improvement_pct", 0))
+        frontier = hypothesis.get("native_frontier")
+        if frontier is None and performance:
+            seed = self.state.read_source(hypothesis["seed"], owner=campaign.candidate_workspace)
+            artifact, _ = source_artifact(seed)
+            frontier = {"source": hypothesis["seed"], "artifact_sha256": hashlib.sha256(artifact.content).hexdigest()}
+        decisive = False
+        for record, source, value in performance:
+            latency = value["latency_us"]
+            baseline = value["baseline_latency_us"]
+            if attempt.get("accepted") is True and value["comparison"]:
+                # The archived native owner independently settled promotion.
+                # It may compare to a champion different from this design's
+                # exploratory frontier; retain that stronger source evidence.
+                decisive = True
+                if "native-promotion" not in progress:
+                    progress.append("native-promotion")
+            if (value["comparison"] and value["baseline_sha256"] == frontier["artifact_sha256"]
+                    and positive(baseline)):
+                # This record compares against the retained best source itself;
+                # no latency or environment identity is borrowed from an old job.
+                decisive = True
+                milestone("first-native-comparison")
+                if latency < baseline * (1 - threshold / 100):
+                    if "native-comparison-improved" not in progress:
+                        progress.append("native-comparison-improved")
+                if latency < baseline:
+                    frontier = {"source": source, "artifact_sha256": value["candidate_sha256"],
+                                "experiment": _record_ref(record)}
+            key = comparison_key(value["measurements"])
+            if key is None:
                 continue
-            evaluation = record.evaluation
-            measurements = evaluation.measurements if evaluation else ()
-            complete = (evaluation is not None and evaluation.gate == "PASS" and not evaluation.error and measurements
-                and all(item.completeness == "complete" and item.validity == "valid" and item.comparability == "comparable"
-                        and item.environment_identity and item.identity.parameters.get("workload_scope") == "full-task"
-                        and item.identity.parameters.get("mode") == "full"
-                        and len(item.identity.parameters.get("workload_digest", "")) == 64 for item in measurements))
-            if not complete:
-                continue
-            # Native completion qualifies one exact sealed source; another
-            # measured trial does not inherit its fidelity judgment.
-            if qualified.get("source_identity") != identity:
-                continue
-            if identity in hypothesis["seen_sources"]:
-                continue  # Remeasurement/replay of old bytes is not new progress.
-            hypothesis["seen_sources"].append(identity)
-            for milestone in ("first-compiled", "first-correct", "first-comparable-performance"):
-                if milestone not in hypothesis["milestones"]:
-                    hypothesis["milestones"].append(milestone)
-                    progress.append(milestone)
-            latency = evaluation.candidate_latency_us
-            if type(latency) not in (float, int) or not math.isfinite(latency) or latency <= 0:
-                continue
-            # Same native measurement protocol, workload, dependency policy,
-            # repeats and environment; source coordinates intentionally vary.
-            signatures = []
-            for item in measurements:
-                value = item.identity.as_dict()
-                # Native input_digest includes the candidate payload. The
-                # separate workload_digest is the source-independent binding,
-                # as in the original Experiment performance-reuse query.
-                value.pop("input_digest")
-                value["parameters"] = {key: val for key, val in value["parameters"].items()
-                    if not key.startswith("candidate_source") and key not in {"correctness_digest"}}
-                value["points"] = [{k: v for k, v in point.items() if k != "revision"} for point in value["points"]]
-                signatures.append({"identity": value, "environment": item.environment_identity})
-            key = digest(signatures)
-            best = hypothesis["best_legal"]
-            threshold = float(getattr(self._campaign, "min_improvement_pct", 0))
-            if best and best["comparison_key"] == key and latency < best["latency_us"] * (1 - threshold / 100):
-                progress.append("comparable-performance-improved")
-            if best is None or best["comparison_key"] == key and latency < best["latency_us"]:
-                hypothesis["best_legal"] = {"latency_us": latency, "comparison_key": key,
-                    "experiment": _record_ref(record), "source": source}
+            milestone("first-comparable-performance")
+            bests = hypothesis.setdefault("best_by_comparison", {})
+            old = hypothesis.get("best_legal")
+            if old is not None:
+                bests.setdefault(old["comparison_key"], old)
+            best = bests.get(key)
+            if best is not None:
+                decisive = True
+                if latency < best["latency_us"] * (1 - threshold / 100):
+                    if "comparable-performance-improved" not in progress:
+                        progress.append("comparable-performance-improved")
+            if best is None or latency < best["latency_us"]:
+                bests[key] = {"latency_us": latency, "comparison_key": key,
+                             "experiment": _record_ref(record), "source": source}
+                hypothesis["best_legal"] = bests[key]
+                if best is not None and frontier["source"]["identity"] == best["source"]["identity"]:
+                    frontier = {"source": source, "artifact_sha256": value["candidate_sha256"],
+                                "experiment": _record_ref(record)}
+        if performance:
+            if hypothesis.get("native_frontier") is None and frontier["source"]["identity"] == hypothesis["seed"]["identity"]:
+                # The first legal implementation is this design's starting
+                # point, even when it is slower than the global champion.
+                record, source, value = performance[0]
+                frontier = {"source": source, "artifact_sha256": value["candidate_sha256"],
+                            "experiment": _record_ref(record)}
+            hypothesis["native_frontier"] = frontier
+            if "native-promotion" in progress:
+                record, source, value = next(row for row in performance if row[2]["comparison"])
+                hypothesis["native_frontier"] = {"source": source, "artifact_sha256": value["candidate_sha256"],
+                                                 "experiment": _record_ref(record)}
+        if progress:
+            assessment["status"] = "progress"
+        elif performance and not decisive:
+            assessment.update(status="unknown", reasons=["cross-record-comparison-unavailable"],
+                comparison_target="kernel-" + frontier["source"]["identity"],
+                next_evidence="Compare the new source against the retained design best in one native ABBA record, "
+                              "obtain owner-observed matching environment evidence, or change the hypothesis.")
+        else:
+            assessment["reasons"] = ["no-new-milestone-or-best-improvement"]
         return progress
 
     def _close_window(self, *, status="settled", stop_reason=None):
         data = self.state.data
         window = data["window"]
         hypothesis = data["hypotheses"][window["hypothesis"]]
-        hypothesis["stagnant"] = 0 if window["progress"] else hypothesis["stagnant"] + 1
+        unknown = any(data["episodes"][str(episode)].get("progress_assessment", {}).get("status") == "unknown"
+                      for episode in window["episodes"])
+        if window["progress"]:
+            hypothesis["stagnant"] = 0
+            hypothesis["uncertain_windows"] = 0
+        elif unknown:
+            hypothesis["uncertain_windows"] = hypothesis.get("uncertain_windows", 0) + 1
+        else:
+            hypothesis["stagnant"] += 1
+        window["progress_status"] = "progress" if window["progress"] else "unknown" if unknown else "no-progress"
+        window["uncertain_windows"] = hypothesis.get("uncertain_windows", 0)
         window["stagnant"] = hypothesis["stagnant"]
         window["status"] = status
         if stop_reason:

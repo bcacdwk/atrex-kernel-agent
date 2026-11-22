@@ -2579,6 +2579,11 @@ class Campaign:
         self.start_runtime()
         return self._supervisor_runtime.read_experiment_source(artifact)
 
+    def experiment_record_reader(self):
+        """Borrow the original read capability, without execution or recovery."""
+        self.start_runtime()
+        return self._supervisor_runtime._record_reader()
+
     def create_engine(self, *, continuous=False, episode_context="", episode_seed=None,
                       candidate_qualification=None):
         """Construct the same native engine used by the ordinary run path.

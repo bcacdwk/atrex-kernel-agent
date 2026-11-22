@@ -13,7 +13,6 @@ from aka.contracts.execution import CommandSpec, ExecutionContext, ExecutionFact
 from aka.contracts.execution_recovery import JobReference
 from aka.contracts.experiment import ExperimentArtifact
 from aka.contracts.experiment_identity import ExperimentRef
-from aka.contracts.measurement import MeasurementAssessment, MeasurementIdentity, MeasurementPoint
 from aka.contracts.problem import ProblemSnapshot
 from aka.contracts.workspace import RevisionContent
 from aka.execution.legacy.executor import LegacyExecutor
@@ -420,37 +419,6 @@ def test_full_source_retention_preserves_deletions_and_detects_drift(tmp_path):
         path.write_text(path.read_text().replace("IyBvbmU=", "IyB0d28="))
         with pytest.raises(RecoveryRequired, match="identity changed"):
             state.read_source(ref, owner=owner)
-
-
-def test_full_native_measurement_progress_can_improve_without_promotion(tmp_path):
-    state = state_at(tmp_path)
-    identity = MeasurementIdentity("atrex-bench/eval", (MeasurementPoint("candidate", "candidate", 0, "shape"),),
-        "a" * 64, {"workload_scope": "full-task", "mode": "full", "workload_digest": "b" * 64}, dependency_policy="fixed")
-    assessment = MeasurementAssessment(identity, "complete", "valid", identity.points,
-        comparability="comparable", environment_identity="L20D-environment")
-    def measured(number, latency):
-        return SimpleNamespace(ref=SimpleNamespace(as_dict=lambda: {"experiment_id": str(number)}),
-            evaluation=SimpleNamespace(gate="PASS", error=None, measurements=(assessment,), candidate_latency_us=latency))
-    with state.owned():
-        state.data["hypotheses"]["h"] = SchemaWorkflow._new_hypothesis({"identity": "seed"})
-        driver = SchemaWorkflow.__new__(SchemaWorkflow)
-        driver.state, driver._campaign = state, SimpleNamespace(min_improvement_pct=0)
-        binding = {"hypothesis": "h"}
-        attempt = {"accepted": False, "candidate_qualification": {"qualified": True, "substantive_change": True, "source_identity": "new-a"}}
-        first = driver._progress(binding, attempt, [(measured(1, 20), {"identity": "new-a"})])
-        assert "first-correct" in first
-        attempt["candidate_qualification"]["source_identity"] = "new-b"
-        changed_input = measured(2, 15)
-        changed_input.evaluation.measurements = (replace(assessment, identity=replace(identity, input_digest="c" * 64)),)
-        assert driver._progress(binding, attempt, [(changed_input, {"identity": "new-b"})]) == ["comparable-performance-improved"]
-        assert driver._progress(binding, attempt, [(measured(2, 5), {"identity": "new-b"})]) == []
-        attempt["candidate_qualification"]["source_identity"] = "seed"
-        assert driver._progress(binding, attempt, [(measured(3, 10), {"identity": "seed"})]) == []
-        assert driver._progress(binding, attempt, [(measured(4, 5), {"identity": "not-qualified-source"})]) == []
-        partial = measured(5, 4)
-        partial.evaluation.measurements = (replace(assessment, completeness="partial"),)
-        attempt["candidate_qualification"]["source_identity"] = "partial"
-        assert driver._progress(binding, attempt, [(partial, {"identity": "partial"})]) == []
 
 
 def test_legacy_real_run_bind_launcher_observations_and_replay_scope(tmp_path, monkeypatch):

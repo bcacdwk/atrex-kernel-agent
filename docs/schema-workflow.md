@@ -107,6 +107,27 @@ unchanged source, partial measurements and unknown qualification do not count
 as new design progress. Independent qualification is a model judgment, not a
 formal proof; the native correctness and promotion gates still apply.
 
+Progress uses original terminal Experiment evidence for the independently
+qualified, sealed source. Complete current Task correctness and the first full
+measurement are finite milestones, including native assessments retained on
+attempts. Full coverage requires the frozen reference inputs and all Task Shapes;
+native ABBA also requires its complete original schedule. Correctness-only Eval
+does not count as performance. A same-record ABBA can establish improvement over
+the retained best source for this design without portable environment identity.
+Comparisons between records still require matching known environment and
+measurement identities, and must beat the design's historical best; promotion
+over the global champion is a separate native decision.
+The next Coder binding includes the exact retained kernel ID and native
+`kernel-read` / `--baseline-path` commands. The shared Campaign source reader
+can retrieve measured candidates that were never promoted.
+
+Missing cross-record identity remains unknown. Such a window returns the missing
+evidence and a concrete comparison target to Planner, without clearing or adding
+measured stagnation. Repeated source or record evidence cannot renew progress;
+an unknown window requires an untried next action, and two unresolved windows
+require a new hypothesis. Recovery does not rewrite earlier progress, native
+measurements or consumed budgets.
+
 Retain the entire private workspace and its sibling `.aka-schema-inputs`
 directory. The controller records state beneath
 `<workspace>/.atrex_long_horizon/schema`; do not delete state to obtain a new

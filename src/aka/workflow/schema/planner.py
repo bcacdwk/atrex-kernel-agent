@@ -787,7 +787,7 @@ class Planner:
 
 
 def coder_context(design_ref: DesignRef, prepared_id: str, episode: int, seed_identity: str,
-                  *, next_actions=()) -> str:
+                  *, next_actions=(), comparison_target=None) -> str:
     artifact = read_design(design_ref)
     if artifact.manifest["prepared_id"] != prepared_id:
         raise ValueError("Coder design belongs to another prepared Task")
@@ -797,8 +797,21 @@ def coder_context(design_ref: DesignRef, prepared_id: str, episode: int, seed_id
                "episode": episode, "seed_identity": seed_identity,
                "closure_digest": artifact.manifest["closure_digest"],
                "planner_next_actions": list(next_actions)}
+    comparison = ""
+    if comparison_target is not None:
+        from aka.workflow.light.measurements import KERNEL_ID
+        if not isinstance(comparison_target, str) or KERNEL_ID.fullmatch(comparison_target) is None:
+            raise ValueError("Design comparison requires a retained native kernel ID")
+        binding["design_comparison_target"] = comparison_target
+        baseline = "scratch/schema-baseline-" + comparison_target[len("kernel-"):]
+        comparison = ("\nFor a comparison against this design's retained best source, use the native tools:\n```sh\n"
+            f"python3 tools/sandbox.py --kind kernel-read --kernel-id {comparison_target} --output-path {baseline}\n"
+            f"python3 tools/sandbox.py --kind run --mode full --no-sync --baseline-path {baseline}\n"
+            "```\nThe baseline may be a file or a source directory. Follow the separate native acceptance "
+            "request for promotion against the champion.\n")
     # The native owner supplies its immutable filesystem mount. Inline the full
     # frozen design as well so the context never depends on a mutable checkout.
     return (read_source_bytes(PROMPTS / "coder.md").decode() + "\n\nBinding:\n" + _json(binding).decode()
+            + comparison
             + "\n".join("\nFrozen " + name + ":\n```\n" + raw.decode() + "\n```\n"
                          for name, raw in sorted(artifact.checked.files.items())))
