@@ -89,6 +89,43 @@ and main feedback at 8,000 characters. Each Planner operation freezes these
 inputs before its first call; recovery reuses them. Planner's concrete next
 actions accompany the frozen design in the next Coder Episode.
 
+Design and optimization writers first read the full public Task, hardware,
+feedback and source identities, then write an intermediate starter or current
+design closure. They consult specifications by relevant field and use candidate
+`schema.check` diagnostics while completing the draft. Unfilled starter fields
+are allowed only in intermediate output: incomplete drafts do not count as a
+completed design, a new hypothesis or promotion. Final contract, numerical,
+hardware, closure and publication checks remain unchanged.
+
+The optional Planner setting `"writer_thinking_budget_tokens": 8192` requests a
+fixed per-response thinking budget only for design/optimize sessions on the Claude backend.
+It defaults to `null` (no override), accepts integers from 1024 through 16384,
+and requires a concrete model selection that agrees across the native environment,
+inline settings and relevant files in the native session's Linux filesystem view.
+The writer reads bounded user, project/local, managed and cached remote settings
+where visible, extracting only model/thinking metadata and whole-file hashes;
+other settings bodies and environment values never enter the public intent.
+It checks those sources again after private Home preparation. Ordinary permissions,
+hooks and WebFetch settings remain in effect. Conflicting selections or budgets,
+disabled thinking, nonempty primary `agent` selections, dynamic aliases/remapping and settings redirects it cannot
+prove are rejected before a model invocation. It does not emulate the CLI's full
+settings precedence or disable settings sources. Extraction, qualification and
+Coder sessions keep their existing settings. The writer preserves the original
+capability string and appends an override only for the selected model, normalizing
+the selector's case and context suffix without changing the actual model name.
+It does not change reasoning effort, the output-token setting, timeout or root
+allowance. The pinned CLI has been verified against an isolated local fake
+provider to send the requested fixed budget; acceptance and effectiveness by a
+real provider still require validation. A starting value of 8192 is an optional
+experiment, not a guarantee of output or successful design.
+
+The budget, concrete model selection, settings-file hashes and merged inline
+settings digest are bound to the writer operation; the override is in the actual
+admitted command. Changed configuration or model/settings sources cannot replay
+an old intent; settle its original owner and use
+the existing explicit succession/recovery procedure. Existing intents are never
+rewritten to adopt the new setting.
+
 Set `continuous: true` and native `max_iters: 0` for continued operation without
 a fixed total window/Episode limit. An explicitly supplied positive native
 budget remains effective. Optional `limits` fields include `max_episodes`,

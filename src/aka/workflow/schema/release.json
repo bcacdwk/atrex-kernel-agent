@@ -541,12 +541,12 @@
       "size": 1090
     },
     "prompts/common.md": {
-      "sha256": "cee5062962a1bb6f058c603676215e6879453fc5672181509ed1aef5a01b87b5",
-      "size": 4172
+      "sha256": "ac5e48e7ee5cbd1962ede8a47372c004519df3349b7f927b43c0bb53f37732a5",
+      "size": 5882
     },
     "prompts/design.md": {
-      "sha256": "bc99ffc257da374ea1128d84db680ac0e6bd5da796e88ada02c9febe2e1df541",
-      "size": 1623
+      "sha256": "d6d2ba65a5423e71429ce1fbe9940c11d9de168558c5a60331a0b97b50f65e6e",
+      "size": 1593
     },
     "prompts/extract.md": {
       "sha256": "ffd6fa5b8948efc19db9a0ae3c7ee7b23a246cc1fa169c11e1cd704f600d18d5",

@@ -11,7 +11,9 @@ import difflib
 import hashlib
 import json
 from pathlib import Path
+import re
 import stat
+import sys
 import time
 from typing import Callable, Mapping
 
@@ -19,7 +21,8 @@ from aka.contracts.agent import (AgentAccess, AgentMount, AgentToolBinding, Nati
                                  AgentRuntimeCapabilities, NormalizedAgentEvent, TokenUsage)
 from aka.contracts.agent_resources import ResourcesSnapshot
 from aka.contracts.workspace import RevisionContent
-from aka.core.filesystem import durable_write_json, durable_write_text, ensure_private_directory
+from aka.core.filesystem import (durable_write_json, durable_write_text, ensure_private_directory,
+                                read_regular_bytes)
 
 from .language import (CapacityError, CheckPolicy, SchemaError, check_design,
                        collect_design, effective_yaml, json_material, normalize_design)
@@ -30,6 +33,7 @@ from .materials import (DesignRef, _directory, _json, _member, closure_digest,
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_FEEDBACK_BYTES = 32_768
 MAX_DECISION_BYTES = 131_072
+_CLAUDE_MANAGED_ROOT = Path("/etc/claude-code")
 _DATA_ERRORS = (ValueError, OSError, UnicodeError, SchemaError, CapacityError, ReadError)
 
 
@@ -82,6 +86,7 @@ class PlannerConfig:
     max_repairs: int = 1
     normalize: bool = True
     check_policy: CheckPolicy = field(default_factory=CheckPolicy)
+    writer_thinking_budget_tokens: int | None = None
 
     def __post_init__(self):
         from aka.agent.provider import validate_timeout
@@ -92,6 +97,169 @@ class PlannerConfig:
             raise ValueError("unsupported reasoning effort")
         if type(self.normalize) is not bool or not isinstance(self.check_policy, CheckPolicy):
             raise ValueError("invalid writer check policy")
+        if self.writer_thinking_budget_tokens is not None:
+            if (type(self.writer_thinking_budget_tokens) is not int
+                    or not 1024 <= self.writer_thinking_budget_tokens <= 16384):
+                raise ValueError("writer thinking budget must be an integer from 1024 to 16384")
+            if self.agent_cli != "claude":
+                raise ValueError("writer thinking budget is supported only by the Claude backend")
+
+
+def _writer_settings_sources(environment, workspace, *, isolated):
+    """Read bounded settings, retaining only related metadata and content hashes.
+
+    Schema's native bwrap view mounts its fresh role workspace and copied Home;
+    host project ancestors and /etc/claude-code are not mounted into that view.
+    Source labels stay stable when prepare_home copies the Claude user settings.
+    Credentials are never opened. Unsupported dynamic routing is rejected below.
+    """
+    if sys.platform != "linux":
+        raise ValueError("writer thinking settings inspection currently requires Linux")
+    home = Path(environment.get("HOME") or Path.home()).absolute()
+    user = Path(environment.get("CLAUDE_CONFIG_DIR") or home / ".claude").absolute()
+    workspace = Path(workspace).absolute()
+    paths = {"user": user / "settings.json"}
+    # Claude puts global config inside CLAUDE_CONFIG_DIR when explicitly set.
+    # prepare_home always sets that directory, but does not seed its global
+    # config there. Inspect the actual prepared path after session creation.
+    if not isolated or environment.get("ATREX_AGENT_PREPARED_HOME"):
+        paths["legacy-user"] = (user if environment.get("CLAUDE_CONFIG_DIR") else home) / ".claude.json"
+    projects = (workspace,) if isolated else (workspace, *workspace.parents)
+    for index, project in enumerate(projects):
+        for name in ("settings.json", "settings.local.json"):
+            paths[f"project:{index}:{name}"] = project / ".claude" / name
+    if not isolated:
+        paths["remote-cache"] = user / "remote-settings.json"
+        managed = _CLAUDE_MANAGED_ROOT
+        paths["managed"] = managed / "managed-settings.json"
+        dropins = managed / "managed-settings.d"
+        if dropins.exists():
+            for path in dropins.glob("*.json"):
+                paths["managed-dropin:" + _digest(path.name.encode())] = path
+                if len(paths) > 256:
+                    raise ValueError("writer thinking settings source count exceeds 256")
+    relevant, hashes = [], {}
+    if len(paths) > 256:
+        raise ValueError("writer thinking settings source count exceeds 256")
+    total = 0
+    for label, path in paths.items():
+        try:
+            raw = read_regular_bytes(path, limit=8 * 1024 * 1024 + 1)
+            if len(raw) > 8 * 1024 * 1024:
+                raise ValueError("settings source exceeds size limit")
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError):
+            raise ValueError("writer thinking settings source is not a bounded regular file") from None
+        total += len(raw)
+        if total > 16 * 1024 * 1024:
+            raise ValueError("writer thinking settings sources exceed 16 MiB")
+        try:
+            document = _loads(raw)
+            if not isinstance(document, dict):
+                raise ValueError("settings object required")
+            relevant.append({"source": label, **_writer_settings_metadata(document)})
+        except (ValueError, TypeError, UnicodeError):
+            raise ValueError("writer thinking settings source has invalid or dynamic selection metadata") from None
+        hashes[label] = _digest(raw)
+    return relevant, hashes
+
+
+def _writer_settings_metadata(settings):
+    """Project related fields only; never return other env values or hook bodies."""
+    values = settings.get("env", {})
+    if not isinstance(values, dict):
+        raise ValueError("writer thinking requires an object settings env")
+    dynamic = {"modelOverrides", "fallbackModel", "fallbackModels", "remoteSettingsHelper",
+               "enforceAvailableModels", "availableModels"}
+    routing = {"HOME", "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_REMOTE_SETTINGS_PATH",
+               "CLAUDE_CODE_MANAGED_SETTINGS_PATH", "CLAUDE_CODE_MOCK_REMOTE_SETTINGS"}
+    if (settings.get("agent") or any(name in settings for name in dynamic)
+            or any(name in values for name in routing)):
+        raise ValueError("writer thinking cannot bind dynamic or redirected Claude settings")
+    if settings.get("alwaysThinkingEnabled") is False:
+        raise ValueError("writer thinking budget conflicts with disabled thinking")
+    result = {name: values[name] for name in ("ANTHROPIC_MODEL", "MAX_THINKING_TOKENS",
+        "CLAUDE_CODE_MODEL_CAPABILITIES", "CLAUDE_CODE_MAX_OUTPUT_TOKENS") if name in values}
+    if "model" in settings and settings["model"] is not None:
+        result["model"] = settings["model"]
+    if any(not isinstance(value, str) for value in result.values()):
+        raise ValueError("writer thinking selection metadata must contain strings")
+    return result
+
+
+def _writer_thinking_settings(environment, config, *, workspace, isolated=False):
+    """Merge a Claude writer override, binding it to an explicit concrete model.
+
+    Validate agreement instead of reproducing CLI settings precedence. File
+    bodies remain private; only hashes and the model belong in the intent.
+    """
+    if config.writer_thinking_budget_tokens is None or config.agent_cli != "claude":
+        raise ValueError("writer thinking override requires an explicit Claude budget")
+    raw = environment.get("ATREX_CLAUDE_SESSION_SETTINGS") or environment.get("ATREX_SESSION_SETTINGS", "")
+    try:
+        settings = _loads(raw) if raw else {}
+    except (ValueError, TypeError):
+        raise ValueError("writer thinking budget requires inline JSON session settings") from None
+    if not isinstance(settings, dict) or not isinstance(settings.get("env", {}), dict):
+        raise ValueError("writer thinking budget requires object session settings and env")
+    metadata, sources = _writer_settings_sources(environment, workspace, isolated=isolated)
+    metadata.append(_writer_settings_metadata(settings))
+    # Scoped native sessions do not admit arbitrary process env settings. Model
+    # selection is an allowed backend field; the two budget controls use settings.
+    if environment.get("ANTHROPIC_MODEL"):
+        metadata.append({"ANTHROPIC_MODEL": environment["ANTHROPIC_MODEL"]})
+    def agreement(*names):
+        declarations = [row[name] for row in metadata for name in names if name in row]
+        if len(set(declarations)) > 1:
+            raise ValueError("writer thinking settings sources have conflicting selection metadata")
+        return declarations[0] if declarations else None
+    values = dict(settings.get("env", {}))
+    selected = agreement("ANTHROPIC_MODEL", "model")
+    if (not isinstance(selected, str) or len(selected) > 256
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/@-]*(?:\[1[mM]\])?", selected)):
+        raise ValueError("writer thinking budget requires an explicit concrete Claude model selection")
+    # Claude lowercases the model before capability lookup even when the request
+    # preserves its original spelling. Do not change the selected model itself.
+    model = re.sub(r"\[1m\]", "", selected, flags=re.IGNORECASE).lower()
+    if model in {"default", "sonnet", "opus", "haiku", "opusplan", "fable", "best",
+                 "claude-opus-4-20250514", "claude-opus-4-1-20250805",
+                 "claude-opus-4-0", "claude-opus-4-1"}:
+        raise ValueError("writer thinking budget does not support dynamic Claude model aliases")
+    capabilities = agreement("CLAUDE_CODE_MODEL_CAPABILITIES") or ""
+    existing_budget = agreement("MAX_THINKING_TOKENS")
+    if existing_budget is not None and existing_budget != str(config.writer_thinking_budget_tokens):
+        raise ValueError("writer thinking budget conflicts with an existing settings budget")
+    output_limit = agreement("CLAUDE_CODE_MAX_OUTPUT_TOKENS")
+    if output_limit is not None and (not output_limit.isdigit()
+            or int(output_limit) <= config.writer_thinking_budget_tokens):
+        raise ValueError("writer thinking budget must be below the existing output limit")
+    capability_flags = {}
+    for entry in capabilities.split(";"):
+        selector, delimiter, flags = entry.partition("=")
+        if delimiter:
+            selector = selector.strip()
+            if not (model.startswith(selector[:-1]) if selector.endswith("*") else model == selector):
+                continue
+        for flag in (flags if delimiter else entry).split(","):
+            flag = flag.strip()
+            if flag.lstrip("-") in {"thinking", "adaptive_thinking"}:
+                capability_flags[flag.lstrip("-")] = not flag.startswith("-")
+    if capability_flags.get("thinking") is False:
+        raise ValueError("writer thinking budget conflicts with the model's disabled thinking capability")
+    if capability_flags.get("adaptive_thinking") is not False and any(
+            row.get("source", "").startswith(("managed", "remote"))
+            and "CLAUDE_CODE_MODEL_CAPABILITIES" in row for row in metadata):
+        raise ValueError("writer thinking cannot override a managed adaptive thinking selection")
+    # Claude applies matching capability entries in order. Append an exact model
+    # selector so unrelated capabilities/models retain their original settings.
+    values["CLAUDE_CODE_MODEL_CAPABILITIES"] = (
+        capabilities + (";" if capabilities else "") + model + "=-adaptive_thinking")
+    values["MAX_THINKING_TOKENS"] = str(config.writer_thinking_budget_tokens)
+    settings = {**settings, "env": values}
+    encoded = _json(settings).decode()
+    return {"model": selected, "settings_sha256": _digest(encoded.encode()), "settings_sources": sources}, {
+        "ATREX_CLAUDE_SESSION_SETTINGS": encoded}
 
 
 @dataclass(frozen=True)
@@ -194,7 +362,8 @@ class _ReadTool:
 def invoke_role(agent, *, workspace: Path, observations_directory: Path,
                 inputs: Mapping[str, bytes], prompt: str, config: PlannerConfig,
                 operation_id: str, observe_result: Callable | None = None,
-                read_only_design: bool = False) -> NativeInvocation:
+                read_only_design: bool = False,
+                writer_thinking: Mapping[str, object] | None = None) -> NativeInvocation:
     """One fresh native session, reusable by extraction workers and reviewers.
 
     Call under the controller's Agent invocation_scope. No retry or admission
@@ -202,6 +371,8 @@ def invoke_role(agent, *, workspace: Path, observations_directory: Path,
     Inputs are the caller's explicit public view, never a host directory mount.
     operation_id identifies this physical call, including its owner's persistent
     stage/attempt suffix; observe_result must deduplicate that call, not sessions.
+    Only design/optimize pass their frozen writer_thinking identity; a writable
+    extraction workspace does not opt into the writer override.
     """
     if not agent.capabilities.filesystem_isolation:
         raise ValueError("Schema roles require an Agent with filesystem isolation")
@@ -241,7 +412,14 @@ def invoke_role(agent, *, workspace: Path, observations_directory: Path,
         if isinstance(session, NativeSession):
             session.record_native_invocation = retain
         try:
-            result = session.invoke(prompt, reasoning_effort=config.reasoning_effort)
+            invocation = {"reasoning_effort": config.reasoning_effort}
+            if writer_thinking is not None:
+                identity, override = _writer_thinking_settings(session.environment, config,
+                    workspace=workspace, isolated=bool(session.environment.get("ATREX_AGENT_PREPARED_HOME")))
+                if identity != writer_thinking:
+                    raise ValueError("writer thinking model or settings changed after operation intent")
+                invocation["environment"] = override
+            result = session.invoke(prompt, **invocation)
             retain(result)
             if observe_result is not None:
                 observe_result(operation_id, result)
@@ -465,7 +643,8 @@ class Planner:
             durable_write_json(path, intent)
         return directory
 
-    def _call(self, directory, inputs, prompt, operation_id, *, read_only_design=False):
+    def _call(self, directory, inputs, prompt, operation_id, *, read_only_design=False,
+              writer_thinking=None):
         """A started call without a receipt is unknown and is never relaunched."""
         receipt_path = directory / "native/receipt.json"
         call_id = operation_id + ":attempt:" + directory.name
@@ -481,7 +660,8 @@ class Planner:
             invoke_role(self.agent, workspace=directory / "workspace",
                         observations_directory=directory / "native", inputs=inputs,
                         prompt=prompt, config=self.config, operation_id=call_id,
-                        observe_result=self.observe_result, read_only_design=read_only_design)
+                        observe_result=self.observe_result, read_only_design=read_only_design,
+                        writer_thinking=writer_thinking)
         receipt = _load(receipt_path)
         if replay and self.observe_result is not None:
             # The durable call id, not the provider's possibly reused session
@@ -540,8 +720,20 @@ class Planner:
         inputs = self._inputs(request)
         prompt = (read_source_bytes(PROMPTS / "common.md") + b"\n\n" +
                   read_source_bytes(PROMPTS / (mode + ".md"))).decode()
-        directory = self._intent(request.directory, mode, inputs,
-            {"operation_id": request.operation_id, "prompt_sha256": _digest(prompt.encode())})
+        extra = {"operation_id": request.operation_id, "prompt_sha256": _digest(prompt.encode())}
+        writer_thinking = None
+        if self.config.writer_thinking_budget_tokens is not None:
+            # Only design/optimize select this override. Extraction/qualification
+            # share the call machinery but never inherit writer thinking limits.
+            runtime = self.agent.runtime(self.config.agent_cli)
+            reader = getattr(runtime, "session_environment", None)
+            if not callable(reader):
+                raise ValueError("writer thinking budget requires native runtime model metadata")
+            writer_thinking, _ = _writer_thinking_settings(reader(), self.config,
+                workspace=request.directory / "attempts/1/workspace",
+                isolated=getattr(getattr(self.agent, "options", None), "sandbox", "none") == "bwrap")
+            extra["writer_thinking"] = writer_thinking
+        directory = self._intent(request.directory, mode, inputs, extra)
         if (directory / "result.json").exists():
             return PlannerResult.from_dict(_load(directory / "result.json"))
         diagnostics = []
@@ -558,7 +750,8 @@ class Planner:
                 call_prompt = prompt + "\n\nThis is a bounded repair call. Read task/repair-diagnostics.json and previous-output/ under inputs. Write a fresh complete output resolving those concrete diagnostics."
             else:
                 call_prompt = prompt
-            receipt = self._call(attempt, attempt_inputs, call_prompt, request.operation_id)
+            receipt = self._call(attempt, attempt_inputs, call_prompt, request.operation_id,
+                                 writer_thinking=writer_thinking)
             if receipt is None:
                 return PlannerResult("failed", None, request.operation_id, directory,
                     (*diagnostics, _notice("invocation.unknown", "A started native call has no retained receipt; settle its owner before a new operation.")),

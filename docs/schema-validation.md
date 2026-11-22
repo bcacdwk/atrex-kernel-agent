@@ -1,6 +1,6 @@
 # Schema 实施与运行验证记录
 
-当前阶段：五轮实现及清理已提交，并持续修复真实实验暴露的问题。旧链完成过 optimize、实现与同卡比较，但未形成完整 D/E 闭环。独立 a94 新运行的 V0 因 worker 环境越界被网关拒绝，修复已通过 CPU 审查，待安装及实测；尚无多日稳定证据。本文件保留简要问题与修复证据，原始日志外置。
+当前阶段：五轮实现及清理已提交，并持续修复真实实验问题。独立运行的两条 V0 已通过；vector 已完成新设计、实现、独立资格审查与正式晋升，并自动进入下一实现 Episode。GEMM 初版设计连续 thinking-only 截断，已保留消费并停止该调用，正在准备规划改进的后继。尚未完整验证两条持续 D/E 链或多日稳定性。
 
 ## 正式目标
 
@@ -90,3 +90,14 @@
 - 18:04 UTC vector 唯一启动，V0 收到 HTTP400 invalid_source：worker env_vars 误带235项宿主变量，网关校验拒绝，原调用已 terminal/settled/not_submitted。0模型、1派发、0 JobRef、0/3测量；GEMM未启动，没有重复提交。
 - 模型鉴权配置也被误带入已拒绝的网关请求，已告知用户；原值未在对话输出或入库，原始证据只私有保留。不能据现有接口断言网关未记录请求。原失败的 Agent/Planner 反馈投影未检出已核查的鉴权值。
 - 修复在身份冻结前分离 host 和 worker：新增默认空且冻结的 worker_environment，保留现有显式 --env、transport 本地设置及原依赖/硬件/形状/重复测量/ABBA语义；不复制完整服务端 allowlist，不重写旧正文或 key。最终177项 CPU 检查、独立实际 live SDK 消费路径审查通过，真实请求尚未重试。
+
+### d3 实测与规划后继
+
+- d3 独立发行177项及实际 SDK 消费、目标 sandbox 三组合通过。同路径继任安装后，原 vector 根恢复，旧400正文/key/派发1保留；新正文仅 worker env 从235项变空，生成新请求/key。外部恢复外壳的延迟状态加载错误在产生新模型/GPU前修复并保留失败记录。
+- 新 vector V0 `ev_24d44c678a37` 三形状通过，7.6914407555微秒；GEMM首次新 V0 `ev_d6ec1a86783d` 十形状通过，7755.3782956425微秒。实际 L20D/1 GPU 与评测器模块及build身份均匹配，各自进入 optimize/design，没有用旧测量当新证据。
+- vector Planner 一次32000截断后在原调用内发布 design v2。新候选650fdc79…完成普通Eval、同分配ABBA、NCU和全量correctness-only；冻结root/dispatch/六条动作确实交给Coder。独立Schema qualification为pass/qualified/substantive_change，绑定六项义务及同一封存源码。
+- 20:41 UTC正式acceptance `ev_62214555f617` 三形状通过，候选7.2518156547微秒、基线7.5444927884微秒，原生聚合提升4.03591525%。Episode1 accepted且归档，champion/tested/sealed同源，六项progress正确记录；第二Episode自动承接该champion和同design v2。尚未观察新E发布，不等同多日稳定。
+- 一个Dev作业控制面failed但physical execution_state unknown/replay_policy never。后续另一个Dev仅新增日志文件、实际脚本/命令相同；原自动replay gate仍拒绝，跨新request的replacement效果检查尚待核实。两原记录保留，不将控制面终态当物理停止，不把所有failed一律封锁不同测量。
+- GEMM design连续三次thinking-only各32000、无draft/check；原调用受控停止并由原生owner接口结算，保留1 Agent/1 dispatch/2576.687秒及部分usage，未冒称零成本或设计成功。V0与原root保留。
+- 规划后继让中间starter/current-closure草稿更早落盘并check，最终完整性及新假设门不变；可选writer_thinking_budget_tokens仅design/optimize，默认None。显式启用时绑定具体Claude模型、有效设置及来源哈希，只覆盖当前session，Coder/reviewer/extract不变。修复了Home设置和primary agent可改变模型、大小写cap selector等反例；普通现有设置仍支持，无法证明的动态选择明确拒绝，不禁用CLI设置来源。
+- 修订相关187项、最后66项预算检查及14默认设置来源CLI用例通过（组合重叠）；七个原审计反例在intent/admission前拒绝，主代理另复验最后六项定点通过。当前真实GEMM配置只读校验支持8192；上述CLI使用隔离loopback假服务，真实provider接受度、工具能力和设计效果仍待后继实测。
