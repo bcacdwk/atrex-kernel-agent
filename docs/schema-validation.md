@@ -68,3 +68,6 @@
 - GEMM 的 high 独立试验真实请求已核实，V0通过10形状、60 correctness cases；截至15:47 UTC仍未产出设计，已两次 thinking-only 达到32000输出。调低 effort 尚未证明解决问题；仍需有效设计与后续 D/E 实测。
 - qualification 现复用原生调用/留存路径，对格式无效的完整输出最多追加配置允许的修正次数；合法 fail/unknown、调用失败及未知 owner 不触发格式重试。reviewer 补了扁平 change_evidence 示例，旧终态不改。相关92项和最终64项 CPU 组合通过（重叠），涵盖计量、预算、丢返回恢复、输入身份及保留文件损坏。
 - GEMM high 至15:54又发生第三次 thinking-only 截断，仍无候选。max/high 输入相同，约26.7万字节中85%是规范，截断思考未进入后续请求。design 提示仅补充“简单完整初版尽早落稿→check→按诊断完善”，保留所有义务和验收门；与 reviewer 统一更新 release，真实效果待新版本试验。旧根的封存调用不能悄悄换提示。
+- 独立 CPU probe 走完“坏格式→合法 pass→原生资格门→归档→进展消费”，1项通过；保留旧 diagnostics 不会否决修正后的合法结果，两个 attempt 独立准入和计量。此证据不改变真实旧 Episode 的 unknown。
+- 旧运行已受控停止、原调用经 owner API 结算，消费未变；原进程全部退出，相关8个历史 GPU jobs 均终态且清理完成。`fd94dd2` 显式安装后，实际 import 检查发现新 progress.py 漏出发行包：构建脚本的 Schema 模块白名单未更新。文件一致性检查只覆盖已打包项，未能发现遗漏；失败发生在新 Task/模型/GPU 启动前。
+- 构建改为只自动收集 Schema 根目录的业务 Python 模块，冻结材料清单和分包边界不变；补了实际漏包与未来新增模块两项回归，相关80项 CPU 检查通过。四包实际 sdist→wheel 全量核对798源文件、540 Python 模块无遗漏/重复；独立非 editable 安装在禁用源码读取和 PYTHONPATH 后导入及 continuous 组合通过，全部798安装文件一致，依赖检查通过。共享实测环境后继安装仍需单独核验。

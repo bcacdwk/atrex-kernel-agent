@@ -29,14 +29,12 @@ OWNERS = {
 
 def owned(distribution: str) -> tuple[Path, ...]:
     if distribution == 'atrex-aka-schema':
-        # Business modules and the frozen material inventory are the entire
-        # local allowlist. Suffix filters omit YAML and extensionless notices;
-        # repository discovery would reintroduce an upstream build dependency.
+        # Include every local top-level business module; a filename list can
+        # silently omit newly imported modules. Nested language/prompts/assets
+        # remain controlled by the frozen inventory, including non-Python data.
         root = ROOT / 'src/aka/workflow/schema'
-        modules = ('__init__.py', 'launch.py', 'plugin.py', 'release.py', 'materials.py',
-                   'planner.py', 'run_state.py', 'workflow.py', 'extract_sources.py', 'extract_stages.py')
         inventory = json.loads((root / 'release.json').read_text())['files']
-        files = [root / name for name in (*modules, 'release.json')]
+        files = sorted(root.glob('*.py')) + [root / 'release.json']
         for name, expected in inventory.items():
             path = root / name
             if (Path(name).is_absolute() or '..' in Path(name).parts
