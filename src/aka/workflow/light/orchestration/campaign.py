@@ -2532,16 +2532,64 @@ class Campaign:
         # The metadata commit must not read as a stalled optimization round on the next resume.
         write_stall(self.workspace, 0)
 
-    def run(self) -> str:
-        """Run the native long-horizon episode supervisor for this campaign."""
+    def prepare_native(self):
+        """Prepare the authored public Task and V0 without starting an Episode.
+
+        Return existing PublicInputContent and ProblemSnapshot contracts. The
+        snapshot is read only after authoring has updated the retained Task.
+        """
+        from aka.workflow.light.long_horizon.main_adapter import prepare_campaign
+        if self.framework_baseline != "never" or self._framework_baseline_correctness_reviewers():
+            raise ValueError("prepare_native requires framework_baseline=never and no V1 reviewers")
+        prepare_campaign(self, framework_baseline=False)
+        inputs = self.problem_provider.content(self.problem, self.workspace,
+            generated_digest=self._generated_agent_problem_digest)
+        public = inputs.prepare_public()
+        if not public.ready:
+            raise RuntimeError("Native preparation did not produce a ready public Task")
+        return public, self.problem_provider.snapshot(self.problem)
+
+    def episode_facts(self, episode: int):
+        """Export native owner facts and three distinct source roles.
+
+        Missing draft/journal evidence raises instead of substituting HEAD.
+        Experiment records remain the original owner objects with their refs.
+        """
+        from aka.workflow.light.long_horizon.store import CampaignStore
+        from aka.workflow.light.host.journal import sealed_candidate_source
+        self.start_runtime()
+        runtime = self._supervisor_runtime
+        state, active = CampaignStore.checkpoint(self.workspace)
+        journal = runtime.read_episode_journal(episode)
+        attempt = next((item for item in state.attempts if item["episode"] == episode), None)
+        return {"attempt": attempt, "active": active if active and active["episode"] == episode else None,
+            "journal": journal, "draft": runtime.read_episode_draft(episode),
+            "candidate": sealed_candidate_source(journal, self.workspace,
+                workspace_provider=self.candidate_workspace),
+            "champion": self.candidate_workspace.read_source(self.workspace),
+            "records": runtime.read_experiment_records()}
+
+    def experiment_records(self):
+        """Read original Experiment owners, including preparation and auxiliary work."""
+        self.start_runtime()
+        return self._supervisor_runtime.read_experiment_records()
+
+    def experiment_source(self, artifact):
+        """Read an original measured source artifact without executing a job."""
+        self.start_runtime()
+        return self._supervisor_runtime.read_experiment_source(artifact)
+
+    def create_engine(self, *, continuous=False, episode_context="", episode_seed=None,
+                      candidate_qualification=None):
+        """Construct the same native engine used by the ordinary run path.
+
+        Continuous mode requires an explicitly unlimited max_iters=0. Token
+        and per-Episode budgets still apply; no native counters are reset.
+        """
         from aka.workflow.light.long_horizon.campaign import LongHorizonCampaign
         from aka.workflow.light.long_horizon.session import LongSessionRunner
-        from aka.workflow.light.long_horizon.recorded_verifier import RecordedABBAValidator
-
-        # LongHorizonCampaign.run creates/measures V0 before constructing its
-        # CampaignStore, which installs the Git excludes. A fresh managed
-        # workspace does not exist yet at this application boundary.
-
+        if type(continuous) is not bool or continuous and self.max_iters != 0:
+            raise ValueError("continuous native execution requires explicit max_iters=0")
         verifier = self.acceptance_verifier(
             execute=self.measure_for_acceptance,
             hardware=self.sandbox_hardware,
@@ -2556,18 +2604,60 @@ class Campaign:
             min_improvement_pct=self.min_improvement_pct,
             private_reference_dir=self.private_reference_dir,
         )
-        engine = LongHorizonCampaign(
+        return LongHorizonCampaign(
             base_campaign=self,
-            max_version=self.max_iters,
+            max_version=None if continuous else self.max_iters,
+            max_episodes=None if continuous else 8,
             token_budget=self.token_budget,
             handoff_resumes=self.handoff_resumes,
             max_stall=self.max_stall,
+            episode_context=episode_context, episode_seed=episode_seed,
+            candidate_qualification=candidate_qualification,
             verifier=verifier,
             session_runner=LongSessionRunner(agent=self.agent, agent_cli=self.agent_cli,
                 usage_policy=lambda turn: turn.terminal_usage.total_tokens or 0,
                 source_inventory=lambda workspace: tuple(self.candidate_workspace.read_source(workspace).files)),
         )
-        return self._finish(engine.run())
+
+    def run(self) -> str:
+        """Run the native long-horizon episode supervisor for this campaign."""
+        return self._finish(self.create_engine().run())
+
+    def finish_native(self, reason: str, *, operation_id: str | None = None) -> str:
+        """Complete once per live Campaign; durable finalization belongs to its owner."""
+        from aka.core.filesystem import durable_write_json, read_regular_bytes
+        record_path = self.workspace / ".atrex_long_horizon/native-finalize.json"
+        retained = None
+        if operation_id is not None:
+            if not isinstance(operation_id, str) or not operation_id:
+                raise ValueError("Native finalization operation identity must be nonempty")
+            try:
+                retained = json.loads(read_regular_bytes(record_path, limit=8192))
+            except FileNotFoundError:
+                pass
+            if retained is not None:
+                if retained.get("operation_id") != operation_id or retained.get("reason") != reason:
+                    raise ValueError("Native finalization belongs to a different operation")
+                if retained.get("state") == "done":
+                    return reason
+                if retained.get("state") != "started":
+                    raise ValueError("Native finalization receipt is invalid")
+        previous = getattr(self, "_native_finished_reason", None)
+        if previous is not None:
+            if previous != reason:
+                raise ValueError("Native Campaign was already finished with another reason")
+            if operation_id is not None:
+                durable_write_json(record_path, {"operation_id": operation_id, "reason": reason, "state": "done"})
+            return previous
+        if retained is not None:
+            raise RuntimeError("Native finalization was interrupted before its terminal receipt; reconcile the original owners before retrying")
+        if operation_id is not None:
+            durable_write_json(record_path, {"operation_id": operation_id, "reason": reason, "state": "started"})
+        result = self._finish(reason)
+        self._native_finished_reason = result
+        if operation_id is not None:
+            durable_write_json(record_path, {"operation_id": operation_id, "reason": reason, "state": "done"})
+        return result
 
     def _finish(self, reason: str) -> str:
         print(f"\n[orchestrator] STOP — {reason}", flush=True)

@@ -1,0 +1,486 @@
+{
+  "commit": "dc6e2b3d318f0324ffdb578c3dcc6cf33a64c7e8",
+  "files": {
+    "assets/ks/kernel_wiki/catalog.json": {
+      "path": "kernel_wiki/catalog.json",
+      "sha256": "1d636b97a6efad05af0dc854a54929d150c937b7bc8abc7e71d6a8e3eba00941"
+    },
+    "assets/ks/schema_docs/0.common.md": {
+      "path": "schema_docs/0.common.md",
+      "sha256": "9b230802ad9440ec4b3aad0319dedbf231611a5b7bcd1db4ae773e99a9282eb6"
+    },
+    "assets/ks/schema_docs/1.contract.algorithm_requirement.md": {
+      "path": "schema_docs/1.contract.algorithm_requirement.md",
+      "sha256": "0f4a46cb087ae1f7abff1e9c78660e4a8dfe080cd9a2fd68b0367c7a9d55fe97"
+    },
+    "assets/ks/schema_docs/2.contract.hardware_specification.md": {
+      "path": "schema_docs/2.contract.hardware_specification.md",
+      "sha256": "ba58edadeeaa4efa5a1085bc84becb238a8ce2d290a66abb80ce6b3c26b14a50"
+    },
+    "assets/ks/schema_docs/3.design.math_reshape.md": {
+      "path": "schema_docs/3.design.math_reshape.md",
+      "sha256": "a581258ec24779ebf7e08037c6c0f52b4956970029d1bb8357013c986fad1079"
+    },
+    "assets/ks/schema_docs/4.design.work_schedule.md": {
+      "path": "schema_docs/4.design.work_schedule.md",
+      "sha256": "96fb95e2e14d9ac2d22a36e9ccacf10da502da8f4526849e8fa56d24eb9a7430"
+    },
+    "assets/ks/schema_docs/5.design.tile_pipeline.md": {
+      "path": "schema_docs/5.design.tile_pipeline.md",
+      "sha256": "4a1af17dd6787a5f3b76e287aa7f9c734314a3e530d52f95b2880fcb44a06759"
+    },
+    "assets/ks/schema_docs/6.realization.md": {
+      "path": "schema_docs/6.realization.md",
+      "sha256": "899621bb24e7e2d721afe715f306ee01808625df721c2481e9aa2f92adefc458"
+    },
+    "assets/ks/schema_template/starter.yaml": {
+      "path": "schema_template/starter.yaml",
+      "sha256": "ea7042e3310c1a519a987e57474cf19588c810bcbb11c853775592e97002ecc3"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_bf16/.extraction/receipt.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_bf16/.extraction/receipt.json",
+      "sha256": "fc595abc33142e284bcb2e42a62ba1b6acaba89391ef0de1bede851ab4b974b7"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_bf16/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_bf16/dispatch.md",
+      "sha256": "d5df5f374886798532027dcc933ef5820f8003e19fb40a0fb258b1034bdf3ff4"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_bf16/mma_sync_decode.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_bf16/mma_sync_decode.yaml",
+      "sha256": "4fd24de856cb33c55c202a9a902ecdbea3782cd1b355dd5e7562399d95d57a92"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_bf16/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_bf16/root.yaml",
+      "sha256": "c63010107d232d34941847bcfa688b72b13fd0dffa9d76054c7a819d35335fcb"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_bf16/split_kv_prefill.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_bf16/split_kv_prefill.yaml",
+      "sha256": "27a2c92e80e1157b9370379e81197e75eb93943105761f92c6747bfd2f0e9ac0"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_bf16/tc_prefill_cpasync.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_bf16/tc_prefill_cpasync.yaml",
+      "sha256": "a6f8845cce453807604dede7d8fb026cbebe8488f5600e0532ffd828fbb784f8"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_fp8_per_token_head/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_fp8_per_token_head/.extraction/current.json",
+      "sha256": "02333e6519d0613f03938a4a40b13bd621e3bfe886aff0d6010a0f7431a12f95"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_fp8_per_token_head/.extraction/receipt.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_fp8_per_token_head/.extraction/receipt.json",
+      "sha256": "342c6b5b8730e96b19e25bc2ceaca892f1bd5ae0d28f7a7d166c42b067405b24"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_fp8_per_token_head/decode_split_kv.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_fp8_per_token_head/decode_split_kv.yaml",
+      "sha256": "31da05187d03b25090aabcfbf4c6392891d14b5259614ded03cd21ccd4a3e0ca"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_fp8_per_token_head/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_fp8_per_token_head/dispatch.md",
+      "sha256": "ef1c7185809f192af43d2bd4dc8b04491e56822af81d239e12522f02d05d77e1"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_fp8_per_token_head/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_fp8_per_token_head/root.yaml",
+      "sha256": "e2b166ca6a0c0e8b709dfddec5e203e7188e1ebb739a68f2c2cbfe0b99b37f02"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_fp8_per_token_head/tcgen05_prefill.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_fp8_per_token_head/tcgen05_prefill.yaml",
+      "sha256": "9b9c47586c421654b2c77df432884ff1fd6d85f7561184d2ef83d89660f6122c"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_mxfp8_qkv/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_mxfp8_qkv/.extraction/current.json",
+      "sha256": "2590843e39065c36a430ff54fc3ee9507b52d2e7a51e6e573864763bb9a3aef2"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_mxfp8_qkv/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_mxfp8_qkv/dispatch.md",
+      "sha256": "7072032d6a1bef569b98323f07cde3f590a509984c10c03327f8a9767a57b6a6"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_mxfp8_qkv/mma_sync.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_mxfp8_qkv/mma_sync.yaml",
+      "sha256": "2742ee74e32b82bfcd57a352861ba7bde903099e1ac802078a17c6af32a31f67"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_mxfp8_qkv/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_mxfp8_qkv/root.yaml",
+      "sha256": "2bb5d7a322ff0307c21b8b18ab613b95bca9ab778174af827b94298f1d0fd97f"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_mxfp8_qkv/split_kv.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/fmha/fmha_mxfp8_qkv/split_kv.yaml",
+      "sha256": "7bf62d3c55a31abecda6cfed470d8ae7831f4eb2350cdf4ab21876d320a9c7b6"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/.extraction/receipt.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/.extraction/receipt.json",
+      "sha256": "eeeab6b8020fc94ca567cd8d0e2fc78889a39e07687e570c1fc69cc509f94fd1"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/dispatch.md",
+      "sha256": "e5c8ba5889ef1f4be35297f51777a0f57348edc8614c8d227a89cce052e8e233"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/pair_stream_k.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/pair_stream_k.yaml",
+      "sha256": "7b9f6be605f7afb091a6e254219a32863b43538dc80ba75e13530b6e4b725ef8"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/pair_two_pass.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/pair_two_pass.yaml",
+      "sha256": "1f9743e159e594c825a8ef8ab97bddc1c7cb715ff7dbdc5815b0486d4054294a"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/root.yaml",
+      "sha256": "34b026f90a32e90c183cda8d61093533883f3a32ec567de3f6dc6eb1296a8134"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/simt_warp_row.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/simt_warp_row.yaml",
+      "sha256": "49a3f867e2153bf07a6564aab9341704a27a5a84c2d4f537e4494c6e021105c6"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/split_k_reduce.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/split_k_reduce.yaml",
+      "sha256": "dd12cf8ecbbcdc93324a5988537adf83154bc6350013ebe38498ec260255e21e"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/umma_single_cta.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/umma_single_cta.yaml",
+      "sha256": "2fd3e48520d7eb8d55baa3755cc3d65e74e7acbb81aebb4b8b92c84d55d57acc"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/weight_band_mma.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm/weight_band_mma.yaml",
+      "sha256": "c1b52ad3ec198e915cca81ab2a856998ef9ce15f3e8bb28430422b09622fcb16"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped/fp8_scaled_grouped_gemm/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped/fp8_scaled_grouped_gemm/.extraction/current.json",
+      "sha256": "d2d3f46533cc1efb114ab90de1d23103820a4541d703ee1e4b5a472838febae1"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped/fp8_scaled_grouped_gemm/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped/fp8_scaled_grouped_gemm/dispatch.md",
+      "sha256": "0924ea2d5cfd82b88a50e4df341395c245b3e147b30c1796f01f9738900e052f"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped/fp8_scaled_grouped_gemm/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped/fp8_scaled_grouped_gemm/root.yaml",
+      "sha256": "a1402afda08375799ad5721cec10e3175e684022921ad9972ee1ab37f6e4639f"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped/fp8_scaled_grouped_gemm/wide.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped/fp8_scaled_grouped_gemm/wide.yaml",
+      "sha256": "0cf0396f752ef8e3675175c5bcb179cd49a44fcc6c1cc5a93db64a8749bfce53"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped_masked/fp8_mxfp4_grouped_gemm_masked/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped_masked/fp8_mxfp4_grouped_gemm_masked/.extraction/current.json",
+      "sha256": "fffb80da70edf745a63a4ff67b44d0b8bddd2e711c027288f0a0079d2b0f2b03"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped_masked/fp8_mxfp4_grouped_gemm_masked/.extraction/receipt.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped_masked/fp8_mxfp4_grouped_gemm_masked/.extraction/receipt.json",
+      "sha256": "71825df99ae7e3665c1a59a0a0b2e6be75e7f8fd311a5c3d539e31f01eafa3a3"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped_masked/fp8_mxfp4_grouped_gemm_masked/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped_masked/fp8_mxfp4_grouped_gemm_masked/dispatch.md",
+      "sha256": "e4856cc903ab2d1594ab816614e735956ded5357ff4761aa30793460870fe22a"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped_masked/fp8_mxfp4_grouped_gemm_masked/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/gemm/grouped_masked/fp8_mxfp4_grouped_gemm_masked/root.yaml",
+      "sha256": "2be08ef6d7f6655ddd741e6dc300d3cf927982fa4cea02d30de750f67213b63a"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_conv_mtp_bf16_state_bf16/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_conv_mtp_bf16_state_bf16/.extraction/current.json",
+      "sha256": "ded1b25f0c52efadcc86b880beb14c51de01818bfbc5ff4877dca11ea6190234"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_conv_mtp_bf16_state_bf16/.extraction/receipt.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_conv_mtp_bf16_state_bf16/.extraction/receipt.json",
+      "sha256": "95bb527d16905e2c7ceead69f028618156314b2b4bcc296412d3fd71f644ce95"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_conv_mtp_bf16_state_bf16/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_conv_mtp_bf16_state_bf16/dispatch.md",
+      "sha256": "2c63f8bf83679d60302f18f6d5d30649a2fce6814ab170fcb243d4343ef49fda"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_conv_mtp_bf16_state_bf16/fused_single_launch.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_conv_mtp_bf16_state_bf16/fused_single_launch.yaml",
+      "sha256": "dcef7516a876e29a107f0fb58366a5eacfdde1775770f47ed3badd7244e37bae"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_conv_mtp_bf16_state_bf16/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_conv_mtp_bf16_state_bf16/root.yaml",
+      "sha256": "62f319ee5571975b232f988fdae362f84c3d029c3ca83773536fc33c9b6f0650"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_conv_mtp_bf16_state_bf16/warp_row_reduction.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_conv_mtp_bf16_state_bf16/warp_row_reduction.yaml",
+      "sha256": "8a217763f0c56d91e65cb5a1ead0e0d465b864528e12d6d4c91e897fb546903e"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_prefill_bf16_state_bf16/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_prefill_bf16_state_bf16/.extraction/current.json",
+      "sha256": "9cf26b922c086e8aff6dc3537ceb6eaee47283cf03cb9e9f629d37974b0bd556"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_prefill_bf16_state_bf16/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_prefill_bf16_state_bf16/dispatch.md",
+      "sha256": "3e907a68cd81cd5a922ec3a6ba85b65498fde56df3bffd0cdb770a18ebc46255"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_prefill_bf16_state_bf16/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_prefill_bf16_state_bf16/root.yaml",
+      "sha256": "b4b4b49e345709ecb2585c86b0e3ff3b1546cc231f56598f1410b9d77da9a341"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_prefill_bf16_state_bf16/segmented.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/gdn_prefill_bf16_state_bf16/segmented.yaml",
+      "sha256": "d5325311d8c429d937791efe0d67df166bfab1c7f09e40b83af43dbc3981a897"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/kda_raw_prefill_state_bf16/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/kda_raw_prefill_state_bf16/.extraction/current.json",
+      "sha256": "9c493683450fa4bfd113f6e02eba407d3cc50b82f9bb70d661e25e2a150c575c"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/kda_raw_prefill_state_bf16/.extraction/receipt.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/kda_raw_prefill_state_bf16/.extraction/receipt.json",
+      "sha256": "6e636f826024cc997142902645b0a3f1b01b67f2119258b60d87cc1d38adc60a"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/kda_raw_prefill_state_bf16/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/kda_raw_prefill_state_bf16/dispatch.md",
+      "sha256": "f6dd0ded732927ef5b1212dfe5b4a6212803b0b65489d16f2c4bb0f57a275925"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/kda_raw_prefill_state_bf16/prepare_chain.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/kda_raw_prefill_state_bf16/prepare_chain.yaml",
+      "sha256": "156f2731be17e81bb6315151a094aaf9d1157adc5121a6a908a480987521e4e3"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/kda_raw_prefill_state_bf16/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/linear_attention/kda_raw_prefill_state_bf16/root.yaml",
+      "sha256": "8efa1af013709557d7ce672c3fb60ae69c3d8c5f8fbe4a258c1056062731a437"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_absorbed_fp8/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_absorbed_fp8/.extraction/current.json",
+      "sha256": "909a7f21fe2c81c250d69b9c076d4c1b148aa90de96db0c55d1fd5e3da52b8c1"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_absorbed_fp8/.extraction/receipt.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_absorbed_fp8/.extraction/receipt.json",
+      "sha256": "1efde491d77f4636cb2309cd01f73b106f051037d340c3656fd05ee25dc24e15"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_absorbed_fp8/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_absorbed_fp8/dispatch.md",
+      "sha256": "903b5ef9ec2c8dc908c2250d81017795d8bcdb18b507a380834510c6df0fbc31"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_absorbed_fp8/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_absorbed_fp8/root.yaml",
+      "sha256": "5b42921213641538bc214e2079f71d0dbbaf9ace1fa02452b02a0da64ee3d4c5"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_absorbed_fp8/simt.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_absorbed_fp8/simt.yaml",
+      "sha256": "011d1270402977806b7c1cffc812316d1006c7ba3adf51602c119cdaa4b8f763"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_absorbed_fp8/split_kv.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_absorbed_fp8/split_kv.yaml",
+      "sha256": "8d407903b5f658db03ffa2e189e7bd3d574274f35347db9a2fdc2a0958ad03bf"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_expanded_fp8/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_expanded_fp8/.extraction/current.json",
+      "sha256": "b491f38e900d702354d5980fc80a60b5fef31dc2f6a8d96d42ea87ae535c7c18"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_expanded_fp8/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_expanded_fp8/dispatch.md",
+      "sha256": "35d6ed680f97a90a1928c5ee21e6577a0e86d10f4c8840fd1dc3f470b12de44d"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_expanded_fp8/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_expanded_fp8/root.yaml",
+      "sha256": "e6d18394dc90718caaf3d2e8904f0ba662e3197b51361fe4cd2c524555276b56"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_nvfp4/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_nvfp4/.extraction/current.json",
+      "sha256": "6f1c0f979991760744918bc13604130ab29a02da01a40661f3c72c3d81c65817"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_nvfp4/.extraction/receipt.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_nvfp4/.extraction/receipt.json",
+      "sha256": "52f0fe6f855f2636a520f063ba3757ea93a961042993c4257948043dc7e0983c"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_nvfp4/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_nvfp4/dispatch.md",
+      "sha256": "68e619f7e7cbda2e9bce578766df763d3b14d0dfb7579b4f9536c12b4dc01dd5"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_nvfp4/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/mla/mla_nvfp4/root.yaml",
+      "sha256": "3b6bb4de5d888044fe8af133bab04020d7baca47bc0dd294a23979428466b1d4"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/moe/bf16_fused_moe/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/moe/bf16_fused_moe/.extraction/current.json",
+      "sha256": "5d9b411f60d3708352207093bd37ecb52996ac8affd5a11c41aa17d0d52ddb53"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/moe/bf16_fused_moe/.extraction/receipt.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/moe/bf16_fused_moe/.extraction/receipt.json",
+      "sha256": "ce3a9f8af12f27e9572c47c05bbece0c35a7c7e1092751f1b5526a840c7a1d8f"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/moe/bf16_fused_moe/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/moe/bf16_fused_moe/dispatch.md",
+      "sha256": "cbaa06e614f242777822b760f27a3d75ab28b936421564e023adb8491a6eb500"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/moe/bf16_fused_moe/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/moe/bf16_fused_moe/root.yaml",
+      "sha256": "2e5fa46fdf6e2f67734e734486b8f05c1698a7f3ecea7c7afea0082f30d9a109"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/moe/fp8_scaled_fused_moe/.extraction/receipt.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/moe/fp8_scaled_fused_moe/.extraction/receipt.json",
+      "sha256": "8c76cd394ee35511111a5dcb397b84098bd6f3c56ed9a379f271ab641a6fb2c4"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/moe/fp8_scaled_fused_moe/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/moe/fp8_scaled_fused_moe/dispatch.md",
+      "sha256": "9fc1db6576c807c15cf183f54f7183906e2646d23a4c78a839a1d9dfff80aaed"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/moe/fp8_scaled_fused_moe/mma_sync_fused.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/moe/fp8_scaled_fused_moe/mma_sync_fused.yaml",
+      "sha256": "4951d82669dd818523030bd7c54d1c0d6eb5345abfbe443e290a698e2b29ba9b"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/moe/fp8_scaled_fused_moe/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/moe/fp8_scaled_fused_moe/root.yaml",
+      "sha256": "5ae127205caa0335b7abaa10839563bcae43332afc54c3d8975c52a1811f8568"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/moe/fp8_scaled_fused_moe/split_k_decode.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/moe/fp8_scaled_fused_moe/split_k_decode.yaml",
+      "sha256": "406178ca799c4cf385b950cc2ceb9c96e483c4009a5ed87f4047ca2384471872"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/moe/nvfp4_fused_moe/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/moe/nvfp4_fused_moe/.extraction/current.json",
+      "sha256": "8f00a7fe62d6920354fcd9a75c8a7ee51db9c1f66ac4d5add76c36775e2d89a4"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/moe/nvfp4_fused_moe/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/moe/nvfp4_fused_moe/dispatch.md",
+      "sha256": "f0083272058fb0aa3a01d3aa2edd8a1069c1e97c3202e5db14b7476910871513"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/moe/nvfp4_fused_moe/mega.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/moe/nvfp4_fused_moe/mega.yaml",
+      "sha256": "7767af2f91d3834a8fd517cf073520fa268ae21d3fbbd34f18b3ac7938e21b35"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/moe/nvfp4_fused_moe/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/moe/nvfp4_fused_moe/root.yaml",
+      "sha256": "1527831435f256d911b0bfe1a3c8c24c14c2511b3f49e9febf1950192012279f"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/moe/nvfp4_fused_moe/split_k.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/moe/nvfp4_fused_moe/split_k.yaml",
+      "sha256": "43670ce7016c3f1689a701099d95d3694361ab79300caf9d064b4c5bdfa090b8"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/dual_cache_latent_bf16/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/dual_cache_latent_bf16/.extraction/current.json",
+      "sha256": "4f71f62a1be3213a8cc36050847e5a2af9a7221ac7e0ff127ce20f2e4eaf95a8"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/dual_cache_latent_bf16/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/dual_cache_latent_bf16/dispatch.md",
+      "sha256": "729d7ff1458653e75dae66f3f503f7b12a90cc7324aa03726535b928ee17ef24"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/dual_cache_latent_bf16/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/dual_cache_latent_bf16/root.yaml",
+      "sha256": "c301f7616727ca3a2b3805ac0ab8d34fd058ce3ac811600e34b23bd216ce73ee"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/dual_cache_latent_bf16/split_kv.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/dual_cache_latent_bf16/split_kv.yaml",
+      "sha256": "9ff1c0419ab45678562d62d512f024bc5e2dab7cea5b320f9d6c8b82d9a70832"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/dual_cache_latent_bf16/tcgen05.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/dual_cache_latent_bf16/tcgen05.yaml",
+      "sha256": "3d5e1a063a1d18a2642ef0d225b05d16580db62cbb83f2ea167003c707d45651"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/dual_cache_latent_bf16/tcgen05_packed.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/dual_cache_latent_bf16/tcgen05_packed.yaml",
+      "sha256": "947718310f08b0ac31a2e51f057580f933f9808fcf3543330d8a8b5dbc202f14"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_indexed_latent_fp8/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_indexed_latent_fp8/.extraction/current.json",
+      "sha256": "dcd55cec5b0c3c4b14d0d44fb92793d27875063c73d92d786d7e206b0c6825ec"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_indexed_latent_fp8/.extraction/receipt.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_indexed_latent_fp8/.extraction/receipt.json",
+      "sha256": "31485cee588c927bf328de375236443c1db95193870245ccef7d5a797f5f9f9d"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_indexed_latent_fp8/cluster_m128.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_indexed_latent_fp8/cluster_m128.yaml",
+      "sha256": "db16916842c815dcc4f6324e2053be0d0e3afb0a83f6fa03a962e698bf4a8e99"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_indexed_latent_fp8/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_indexed_latent_fp8/dispatch.md",
+      "sha256": "e59143e2adeaa08872c3c45ea5ced892d2edbc79a99baded59523b761aba7168"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_indexed_latent_fp8/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_indexed_latent_fp8/root.yaml",
+      "sha256": "168efc83ce76255836ae8ac2afbe33637a2fa306042cff5ca20515131275af28"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_indexed_latent_fp8/split8_merge.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_indexed_latent_fp8/split8_merge.yaml",
+      "sha256": "b4103129d2886004de7bfffb3f0e8a05df0cbad5eaf0f166f336ce4e2a5e5a9d"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_latent_mxfp8_nvfp4/.extraction/current.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_latent_mxfp8_nvfp4/.extraction/current.json",
+      "sha256": "a3d7828f5a5e66cbbcfd091eb43d1958660645a3c890803f707f2e12fc39e095"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_latent_mxfp8_nvfp4/.extraction/receipt.json": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_latent_mxfp8_nvfp4/.extraction/receipt.json",
+      "sha256": "05302d92d7b8fc65f6e52e99459ef41687d60714c0a38b53b4eabc5b965a2874"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_latent_mxfp8_nvfp4/dispatch.md": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_latent_mxfp8_nvfp4/dispatch.md",
+      "sha256": "ed5004b5ec3add04b33e4492e717c3e14aa10322c8139c8f71374203bf042182"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_latent_mxfp8_nvfp4/root.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_latent_mxfp8_nvfp4/root.yaml",
+      "sha256": "64e326c5c0dd212ac27b7b78d6403e989e06bec1febca7ed7168bc3ea0305346"
+    },
+    "assets/ks/schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_latent_mxfp8_nvfp4/tcgen05_tmem.yaml": {
+      "path": "schema_wiki/aka-cuda-operators-20261030/operators/sparse_attention/paged_latent_mxfp8_nvfp4/tcgen05_tmem.yaml",
+      "sha256": "4817d5204e34150258ac2d21733cbe8b40b624a674212ee8ffcaaec62a7aa3e4"
+    },
+    "language/design_resolution.py": {
+      "path": "schema_template/tools/design_resolution.py",
+      "sha256": "e8dc21af08b48334c51716e113b2b232dcfac0c9764236831a8aa38d0517644b"
+    },
+    "language/diagnostics.py": {
+      "path": "schema_template/tools/diagnostics.py",
+      "sha256": "5422298c6a1bd822e2e5d804a2b043cbca7dc7f670a5c72fb9edfc6c96ebc76c"
+    },
+    "language/errors.py": {
+      "path": "schema_template/tools/errors.py",
+      "sha256": "4006412e9fb784171cc9f3f30a12ff4435f1998eddeb979ee2440458816755f4"
+    },
+    "language/normalization.py": {
+      "path": "schema_template/tools/normalization.py",
+      "sha256": "76be06d470f74ac9e8dfa3a4e81227569e1082e16c22285665255746ad803f0a"
+    },
+    "language/pipeline_syntax.py": {
+      "path": "schema_template/tools/pipeline_syntax.py",
+      "sha256": "df1cdaca58161545070df06cfb04ed5f0a30db60ecfb08cbdabe42c554a9bcf8"
+    },
+    "language/rules/__init__.py": {
+      "path": "schema_template/tools/rules/__init__.py",
+      "sha256": "1eac3ea660436e87d52b7dac639384f195f1d087f92770abd64f199120b81efd"
+    },
+    "language/rules/common.py": {
+      "path": "schema_template/tools/rules/common.py",
+      "sha256": "b542304b1573f9bf3aa7e6093ab035deb9d23a51c87ded95399c81230f38fc09"
+    },
+    "language/rules/declarations.py": {
+      "path": "schema_template/tools/rules/declarations.py",
+      "sha256": "cc7fec457e606e3ea40f5ef4c3be15af9ec1911eee5d9bf7b52e3311c07712ca"
+    },
+    "language/rules/dispatch.py": {
+      "path": "schema_template/tools/rules/dispatch.py",
+      "sha256": "255dd017a211946fd56d06ee037c52b8d3a63b8e417e74e8e49be014270b8853"
+    },
+    "language/rules/hardware.py": {
+      "path": "schema_template/tools/rules/hardware.py",
+      "sha256": "9504d187d02d0c7cd8f1fa9f13b108e78873d6cbf415486a2d77a98b4cfb61f1"
+    },
+    "language/rules/pipeline.py": {
+      "path": "schema_template/tools/rules/pipeline.py",
+      "sha256": "3cc2467827ebd9fe88bd19071fcacc13223fe7321de19d61d279928c73c25cfb"
+    },
+    "language/rules/schedule.py": {
+      "path": "schema_template/tools/rules/schedule.py",
+      "sha256": "5ecedd50971dfb947bc351e49981487afe9d60cf058f718aee993b4749395364"
+    },
+    "language/rules/structure.py": {
+      "path": "schema_template/tools/rules/structure.py",
+      "sha256": "e7ae22b7e5fef2aee8fad7468f5b8c7ffadc5ed5ac7b810d53c467a3900b14e0"
+    },
+    "language/rules/symbols.py": {
+      "path": "schema_template/tools/rules/symbols.py",
+      "sha256": "35fc96bd26630771decdb6c2a70a805d844c857f1084b190dc894d8491da0acc"
+    },
+    "language/rules/values.py": {
+      "path": "schema_template/tools/rules/values.py",
+      "sha256": "e325ab23b0778aaf9ade6779b46cba5c7fc9e0dc12c1d3762dc8c50febc5379f"
+    },
+    "language/text_policy.py": {
+      "path": "schema_template/tools/text_policy.py",
+      "sha256": "7b50e219f58eeda3438ca8f4e11019081e1b3d5134c0598939038a220d011978"
+    },
+    "language/yaml_format.py": {
+      "path": "schema_template/tools/yaml_format.py",
+      "sha256": "a2797cbcca8443121a2e53ba7a1791c929041d05df1cbc0aa5a87fac76140ced"
+    },
+    "language/yaml_source.py": {
+      "path": "schema_template/tools/yaml_source.py",
+      "sha256": "34ee26d031cfea07b9e08597b24aea619732c121271983d23da9683ee0248bfc"
+    }
+  },
+  "repository": "https://github.com/bcacdwk/KernelSchema"
+}

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 import math
 from pathlib import Path
@@ -99,6 +99,15 @@ class _Invocation:
     processes: set = field(default_factory=set)
     cancelled: bool = False
     control: object | None = None
+    scope: object | None = None
+    permit: object | None = None
+
+
+@dataclass
+class _InvocationScope:
+    admit: object
+    observe: object
+    closed: bool = False
 
 
 class Agent:
@@ -139,6 +148,7 @@ class Agent:
         self._idle = Condition(self._lock)
         self._running = 0
         self._execution = NativeExecution()
+        self._invocation_scope = None
         if options.sandbox == "bwrap":
             if process_runner is not None:
                 raise ValueError("Bubblewrap requires an FD-aware spawn adapter")
@@ -164,6 +174,38 @@ class Agent:
         if self._closed:
             raise RuntimeError("Agent has been closed")
 
+    def _check_scope(self, scope):
+        self._check_open()
+        if scope is not None and scope.closed:
+            raise RuntimeError("Agent invocation scope has been closed")
+        if scope is not self._invocation_scope:
+            raise RuntimeError("Agent runtime belongs to another invocation scope")
+
+    @contextmanager
+    def invocation_scope(self, *, admit, observe):
+        """Install host callbacks on this idle owner, before opening sessions.
+
+        Admission sees the actual prepared launch, including its private Home.
+        These in-process values may contain credentials; callers must not log
+        them. Old sessions retain their closed scope and cannot escape it.
+        """
+        if not callable(admit) or not callable(observe):
+            raise TypeError("invocation callbacks must be callable")
+        scope = _InvocationScope(admit, observe)
+        with self._lock:
+            self._check_open()
+            if self._invocation_scope is not None or self._invocations:
+                raise RuntimeError("Agent scope must be installed before sessions are opened")
+            self._invocation_scope = scope
+            self._runtimes.clear()
+        try:
+            yield self
+        finally:
+            with self._lock:
+                scope.closed = True
+                self._invocation_scope = None
+                self._runtimes.clear()
+
     def _guard_path(self):
         resource = (
             self._shell_guard() if callable(self._shell_guard) else self._shell_guard
@@ -179,8 +221,9 @@ class Agent:
         access,
         *,
         explicit_environment=(),
+        invocation_scope=None,
     ):
-        self._check_open()
+        self._check_scope(invocation_scope)
         workspace = Path(workspace).absolute()
         values = dict(environment)
         _validate_environment(values)
@@ -317,7 +360,7 @@ class Agent:
         key = uuid.uuid4().hex
         values["AKA_AGENT_INVOCATION"] = key
         with self._lock:
-            self._check_open()
+            self._check_scope(invocation_scope)
             self._invocations[key] = _Invocation(
                 backend,
                 host,
@@ -325,6 +368,7 @@ class Agent:
                 workspace,
                 authority,
                 frozenset(permitted) if scoped else None,
+                scope=invocation_scope,
             )
         return values
 
@@ -357,6 +401,8 @@ class Agent:
             signal_process_groups(
                 {process.pid} | descendant_process_groups(process.pid), signal.SIGKILL
             )
+        if context.scope is not None and context.active:
+            context.scope.observe(context.permit, event="cancel_requested", value=None)
 
     def _spawn_owned(self, context, command, **options):
         # Serializing registration with close prevents a late spawn escaping ownership.
@@ -364,6 +410,8 @@ class Agent:
             self._check_open()
             if context.cancelled:
                 raise RuntimeError("Agent session has been cancelled")
+            if context.scope is not None and context.scope.closed:
+                raise RuntimeError("Agent invocation scope has been closed")
             process = self._spawn(command, **options)
             self._processes.add(process)
             context.processes.add(process)
@@ -394,6 +442,7 @@ class Agent:
             context.active += 1
             self._running += 1
         launch = None
+        admitted = False
         owned_control = ExitStack()
         try:
             if any((host_transport(name) or name.startswith(POLICY_ENVIRONMENT_PREFIX))
@@ -429,22 +478,37 @@ class Agent:
             owned_control.callback(control.kill)
             if TOKEN_ENV in context.authority:
                 owned_control.enter_context(self._tool_host.bind_control(cwd, values, control))
+            scope = context.scope
+            if scope is not None:
+                with self._lock:
+                    if scope.closed:
+                        raise RuntimeError("Agent invocation scope has been closed")
+                    context.permit = scope.admit(command=tuple(launch.command), workspace=Path(cwd),
+                        timeout=limit, environment=dict(launch.environment), backend=context.backend.id,
+                        access=context.access, control=control)
+                    admitted = True
             if self._process_runner is not None:
                 control.clock.start()
-                return self._process_runner(
+                result = self._process_runner(
                     launch.command, cwd=cwd, timeout=limit, env=launch.environment
                 )
-            return run_bounded(
-                launch.command,
-                cwd,
-                limit,
-                launch.environment,
-                spawn=lambda command, **kw: self._spawn_owned(context, command, **kw),
-                unavailable=self._unavailable,
-                violation=self._violation,
-                inherited_descriptors=launch.pass_fds,
-                session_control=control,
-            )
+            else:
+                result = run_bounded(
+                    launch.command, cwd, limit, launch.environment,
+                    spawn=lambda command, **kw: self._spawn_owned(context, command, **kw),
+                    unavailable=self._unavailable, violation=self._violation,
+                    inherited_descriptors=launch.pass_fds, session_control=control,
+                    on_observation=(lambda value: scope.observe(context.permit,
+                        event="output", value=value)) if scope is not None else None,
+                )
+            if scope is not None:
+                scope.observe(context.permit, event="result", value={"result": result,
+                    "active_seconds": control.clock.active_seconds()})
+            return result
+        except BaseException as error:
+            if admitted:
+                context.scope.observe(context.permit, event="error", value=error)
+            raise
         finally:
             try:
                 owned_control.close()
@@ -453,6 +517,7 @@ class Agent:
                     launch.close()
                 with self._lock:
                     context.control = None
+                    context.permit = None
                     context.processes.clear()
                     context.active -= 1
                     self._running -= 1
@@ -465,13 +530,15 @@ class Agent:
         with self._lock:
             self._check_open()
             if runtime_id not in self._runtimes:
+                scope = self._invocation_scope
                 self._runtimes[runtime_id] = build_agent_runtime(
                     runtime_id,
                     registry=self._registry,
                     process_runner=self._execute,
-                    check_open=self._check_open,
+                    check_open=lambda: self._check_scope(scope),
                     session_name=self._session_name,
-                    prepare_environment=self._prepare,
+                    prepare_environment=lambda *args, **kwargs: self._prepare(
+                        *args, **kwargs, invocation_scope=scope),
                     prepared_home=self.options.sandbox == "bwrap",
                     release_environment=self._release,
                     environment=self._environment,
@@ -492,6 +559,7 @@ class Agent:
 
         with self._lock:
             self._check_open()
+            scope = self._invocation_scope
             session = NativeSession(
                 runtime_id,
                 Path(workspace),
@@ -500,10 +568,11 @@ class Agent:
                     command, cwd, timeout, env
                 ),
                 environment,
-                self._check_open,
+                lambda: self._check_scope(scope),
                 runtime=self.runtime(runtime_id),
                 output_directory=output_directory,
-                prepare_environment=self._prepare,
+                prepare_environment=lambda *args, **kwargs: self._prepare(
+                    *args, **kwargs, invocation_scope=scope),
                 access=access,
                 release_environment=self._release,
                 cancel_environment=self._cancel,

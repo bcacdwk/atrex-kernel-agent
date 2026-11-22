@@ -159,6 +159,7 @@ def run_bounded(
     session_control=None,
     unavailable=None,
     violation=None,
+    on_observation=None,
 ) -> tuple[str, str, int, bool]:
     """Bound active Agent time; admitted host waits suspend the owned tree."""
     from ..provider import validate_timeout
@@ -204,6 +205,9 @@ def run_bounded(
                 sizes = (len(exc.output or b""), len(exc.stderr or b""))
                 if sizes != output_sizes:
                     last_output_change, output_sizes = now, sizes
+                    if on_observation is not None:
+                        on_observation({"stdout": exc.output or b"", "stderr": exc.stderr or b"",
+                                        "active_seconds": control.clock.active_seconds()})
                 if now - last_heartbeat >= AGENT_HEARTBEAT_SECONDS:
                     print(f"[agent-heartbeat] elapsed={round(now - started)}s "
                         f"active={round(control.clock.active_seconds())}s "

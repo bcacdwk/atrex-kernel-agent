@@ -40,20 +40,26 @@ def validate_config(config):
     WorkflowOptions(**{key: value for key, value in config.items() if key != "startup"})
 
 
-def apply(ctx, config):
-    from aka.workflow.legacy.agent_host import process_policy
-    ctx.contribute("agent_process_policies", "workflow", process_policy(ctx.execution_context.environment))
+def create_workflow(ctx, config, *, driver=None, resources=None, driver_factory=None):
+    """Shared native construction for normal Light and an explicit driver."""
     from .provider import LightWorkflow, WorkflowOptions
-    workflow = LightWorkflow(ctx.agent, ctx.problem, ctx.source, ctx.candidate,
+    return LightWorkflow(ctx.agent, ctx.problem, ctx.source, ctx.candidate,
                              executor=ctx.executor, execution_context=ctx.execution_context,
                              experiment_factory=ctx.experiment_factory, evaluator_factory=ctx.evaluator_factory,
                              evaluation_defaults=ctx.evaluation_defaults, measurement_parallelism=ctx.measurement_parallelism,
                              workflow_observer=ctx.workflow_observer,
                              episode_evidence_reader=ctx.experiment_episode_evidence,
                              episode_evidence_interpreter=ctx.evaluation_episode_interpreter,
+                             driver=driver, resources=resources, driver_factory=driver_factory,
                              options=WorkflowOptions(**{
                                  key: value for key, value in config.items() if key != "startup"
                              }))
+
+
+def apply(ctx, config):
+    from aka.workflow.legacy.agent_host import process_policy
+    ctx.contribute("agent_process_policies", "workflow", process_policy(ctx.execution_context.environment))
+    workflow = create_workflow(ctx, config)
     ctx.effect(workflow.close, label="close light Workflow and private runtimes")
     ctx.provide(WORKFLOW, workflow)
     if config.get("startup", False):

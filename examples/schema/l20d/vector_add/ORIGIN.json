@@ -1,0 +1,62 @@
+{
+  "format": "aka.example-inputs.v1",
+  "upstream_kernel_schema_commit": "dc6e2b3d318f0324ffdb578c3dcc6cf33a64c7e8",
+  "files": {
+    "published/root.yaml": {
+      "repository": "KernelSchema",
+      "path": "examples/workflows/vector_add/root.yaml",
+      "sha256": "58a83e9be44e4d1d5f656454fbec1de65ec948f49c79aad06f9daeb6b6d30e1c"
+    },
+    "published/results.json": {
+      "repository": "KernelSchema",
+      "path": "examples/workflows/vector_add/results.json",
+      "sha256": "fc734278989764a10c74794c1cd154f65d1ba23130d53ebc074de20df56855eb"
+    },
+    "published/task.md": {
+      "repository": "KernelSchema",
+      "path": "examples/workflows/vector_add/task.md",
+      "sha256": "3a187afbce1d0f2291e8160b2fcf569aa9203dc1808bc331b9cb0777dc729f84"
+    },
+    "kernel.py": {
+      "repository": "KernelSchema",
+      "path": "examples/workflows/vector_add/kernel.py",
+      "sha256": "105d89d7432e0662625b9388df68ac1f36ecfcecb1bd4494074b3adc7a5f7e5f"
+    },
+    "benchmark/reference.py": {
+      "repository": "atrex-kernel-agent",
+      "path": "skills/atrex-aka-light/examples/native-atrex-bench-vector-add/reference.py",
+      "sha256": "d55b1beb21b3e27bbe7a91c2b2558ea74187c5e3f798df48a0efb084be051c0c"
+    },
+    "benchmark/input.py": {
+      "repository": "atrex-kernel-agent",
+      "path": "skills/atrex-aka-light/examples/native-atrex-bench-vector-add/input.py",
+      "sha256": "f46bfc0b61306e2bb37653142ee7ef48c1af1870f7de6c55d81e1c0f52a90e76"
+    },
+    "benchmark/shapes.json": {
+      "repository": "atrex-kernel-agent",
+      "path": "skills/atrex-aka-light/examples/native-atrex-bench-vector-add/shapes.json",
+      "sha256": "314314866671d5b1ac7655178a23ec23a0d6d533afb0c8364b2f134529145d34"
+    },
+    "benchmark/metadata.json": {
+      "repository": "atrex-kernel-agent",
+      "path": "skills/atrex-aka-light/examples/native-atrex-bench-vector-add/metadata.json",
+      "sha256": "17d5b6e61678e635bb168f3afa7091237709f5fbf22f7d30c7c13f4eefa9f740"
+    }
+  },
+  "adapted_schema_sha256": "ea2ac71942c3d03e6a08f7c81b6e787d18b8eb0d03eebef1aeb91890206dc26d",
+  "adapted_dispatch_sha256": "d9858e53bc314cc4dd3c92e9190e6a7e76ffded3e590e66b8aef1336f225aecc",
+  "check_policy": {
+    "skip_hardware": true,
+    "style": "advisory"
+  },
+  "source_gpu": {
+    "model": "NVIDIA L20D",
+    "kind": "published_observation",
+    "evidence": "published/results.json",
+    "source_sha256": "105d89d7432e0662625b9388df68ac1f36ecfcecb1bd4494074b3adc7a5f7e5f",
+    "original_schema_sha256": "58a83e9be44e4d1d5f656454fbec1de65ec948f49c79aad06f9daeb6b6d30e1c",
+    "environment_identity": null
+  },
+  "new_gpu_verification": false,
+  "global_sota_claim": false
+}

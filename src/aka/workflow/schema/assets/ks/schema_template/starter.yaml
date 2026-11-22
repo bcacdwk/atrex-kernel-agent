@@ -1,0 +1,69 @@
+META_DATA:
+  Name:
+  Describe:
+  Version: 1
+CONTRACT:
+  Algorithm_requirement:
+    Input: {input: {meaning: null, shape: null, dtype: null}}
+    Output: {output: {meaning: null, shape: null, dtype: null}}
+    Compute:
+      - Name:
+        Math:
+    Golden_reference:
+      Source:
+      Tolerance: {output: null}
+  Hardware_specification:
+    Device:
+    Architecture:
+    Execution: {unit: null}
+    Feature: {mechanism: null}
+    Stack:
+      Language:
+      Toolchain:
+    Wiki:
+      Hardware:
+      Programming:
+        Language:
+      Microbench:
+      Sota:
+        Kernel:
+        Schema:
+      Profile:
+DESIGN:
+  Math_reshape:
+    Thesis:
+    Rewrite:
+      - Name:
+        Math:
+  Work_schedule:
+    Thesis:
+    Step:
+      MAIN:
+        Describe:
+        Decomposition:
+          Partition: {dimension: {meaning: null, size: null, tile: null}}
+          Target:
+            Single_tile: {output: {meaning: null, shape: null, dtype: null}}
+        Mapping:
+          Worker: {unit: null, unit_count: null}
+          Worker_count:
+        Schedule:
+          Worktile_order: [{by: dimension, direction: null}]
+          Worker_assignment:
+            Refill:
+            Exit:
+    Flow:
+      Launch: [{step: [MAIN]}]
+  Tile_pipeline:
+    Thesis:
+    Step:
+      MAIN:
+        Role:
+          MAIN:
+            Info:
+              Describe:
+              Member:
+              Using_verb:
+                compute: {output: {execution_mode: null, describe: null}}
+            Pipe:
+              - compute:output

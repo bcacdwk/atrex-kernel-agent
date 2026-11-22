@@ -96,6 +96,3 @@
 	shallow = false
 	path = reference-projects/triton-for-sail
 	url = git@github.com:t-head/triton-for-sail.git
-[submodule "optional/KernelSchema"]
-	path = optional/KernelSchema
-	url = https://github.com/bcacdwk/KernelSchema.git

@@ -74,7 +74,7 @@ See the [setup guide](docs/quickstart.md) for prerequisites and problem preparat
 - [Quick Start](docs/quickstart.md) — setup, inputs, launch, and outputs.
 - [Architecture](docs/design.md) — ownership, lifecycle, verification, and recovery.
 - [Configuration](docs/optional-light-modules.md) — modules, profiles, and optional features.
-- [Schema assistance](docs/schema-standard-workflow.md) — optional design input for the normal Light workflow.
+- [Schema workflow](docs/schema-workflow.md) — optional design and implementation iteration using native Light.
 - [Source layouts](docs/native-cuda.md) — multi-file candidates and native CUDA.
 - [GPU Wiki](gpu-wiki/README.md) — structured optimization knowledge.
 - [Release notes](docs/releases/v0.4.0.md) — changes and upgrade guidance.

@@ -2,10 +2,18 @@
 import os
 from pathlib import Path
 import sys
-from dataclasses import replace
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from aka.contracts.execution import BackendCapabilities, JobResult, ResourceIdentity
 from aka.execution.configuration import queue_wait_grace, client_wait_timeout
 from aka.execution.job_recovery import GatewayRecoveryMixin, recovery_policy
+
+
+@dataclass
+class _DispatchScope:
+    admit: object
+    observe: object
+    closed: bool = False
 
 
 class GatewayExecutor(GatewayRecoveryMixin):
@@ -16,6 +24,7 @@ class GatewayExecutor(GatewayRecoveryMixin):
         if {"retry_delays", "warmup_iters"}.intersection(self.configuration):
             raise ValueError("gateway timing/retry policy fields are retired; use Evaluation requests and Experiment retry configuration")
         self.environment = os.environ.copy()
+        self._dispatch_scope = None
         recovery_policy(self.configuration)
         if "requirements_file" in self.configuration:
             raise ValueError("worker requirements belong to Task, not gateway provider configuration")
@@ -29,7 +38,34 @@ class GatewayExecutor(GatewayRecoveryMixin):
         executor = type(self)(self.configuration)
         executor.environment = dict(context.environment)
         executor._bound_context = True
+        executor._dispatch_scope = self._dispatch_scope
         return executor
+
+    @contextmanager
+    def dispatch_scope(self, *, admit, observe):
+        """Bind one Campaign's callbacks before creating bound Executors.
+
+        A bound Executor retains this exact scope after it closes. Recovery
+        queries/cancellation stay available; replay is never a scoped dispatch.
+        """
+        if not callable(admit) or not callable(observe):
+            raise TypeError("dispatch callbacks must be callable")
+        if self._dispatch_scope is not None:
+            raise RuntimeError("Gateway already belongs to a dispatch scope")
+        if self.configuration.get("idempotent_replay") or self.configuration.get("recovery_retry_delays"):
+            raise ValueError("Scoped Gateway requires replay and automatic recovery retries disabled")
+        scope = _DispatchScope(admit, observe)
+        self._dispatch_scope = scope
+        try:
+            yield self
+        finally:
+            scope.closed = True
+            self._dispatch_scope = None
+
+    def replay_job(self, command, *, idempotency_key):
+        if self._dispatch_scope is not None:
+            raise RuntimeError("Scoped Gateway does not permit automatic replay")
+        return super().replay_job(command, idempotency_key=idempotency_key)
 
     def _environment_backend(self, environment=None):
         from aka.execution.environment_query import BackendEnvironment
@@ -50,6 +86,8 @@ class GatewayExecutor(GatewayRecoveryMixin):
         return self._environment_backend().check(query)
 
     def run(self, command):
+        if self._dispatch_scope is not None and self._dispatch_scope.closed:
+            raise RuntimeError("Gateway dispatch scope has been closed")
         from aka.execution.command_transport import prepared_input_workspace
         self.capabilities.require(command)
         with prepared_input_workspace(command) as physical:
@@ -147,14 +185,27 @@ class GatewayExecutor(GatewayRecoveryMixin):
         def observed(result):
             if command.on_observation is not None:
                 command.on_observation(decorate(result))
+            if scope is not None:
+                scope.observe(permit, event="observation", value=decorate(result))
+        scope = self._dispatch_scope
+        permit = None
+        if scope is not None:
+            if scope.closed:
+                raise RuntimeError("Gateway dispatch scope has been closed")
+            permit = scope.admit(command=command)
         try:
             result = run_owned(argv, environment=environment, workspace=command.workspace,
                 timeout=wait_timeout, resource=self.resource_identity,
                 hardware=command.hardware, cancel_event=command.cancel_event, input_payload=input_payload,
                 prepared_input_payload=prepared_payload(command.prepared_inputs, command.input_files),
-                on_observation=observed if command.on_observation is not None else None)
+                on_observation=observed if command.on_observation is not None or scope is not None else None)
         except BaseException as error:
             if isinstance(getattr(error, "execution_outcome", None), JobResult):
                 error.execution_outcome = decorate(error.execution_outcome)
+            if scope is not None:
+                scope.observe(permit, event="error", value=error)
             raise
-        return decorate(result)
+        result = decorate(result)
+        if scope is not None:
+            scope.observe(permit, event="result", value=result)
+        return result

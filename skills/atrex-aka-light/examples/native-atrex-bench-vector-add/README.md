@@ -84,7 +84,7 @@ that local revision does not identify the remote wheel's Git revision.
 | `metadata.json` | `17d5b6e61678e635bb168f3afa7091237709f5fbf22f7d30c7c13f4eefa9f740` |
 
 For another device, changed inputs or a fresh comparison, follow the ordinary
-[Agate baseline commands](../../../../docs/schema-standard-workflow.md#native-task-and-performance-baseline)
+[Agate baseline commands](../../../../docs/schema-workflow.md#native-benchmark-inputs)
 and keep the original job receipt. Record each actual Shape timing at
 `shapes[ID].production_performance.performance_us`, `perf_gpu`, and the new
 measurement provenance in `metadata.json`. Do not reuse these L20D timings as

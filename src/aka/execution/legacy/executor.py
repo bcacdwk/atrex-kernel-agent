@@ -7,12 +7,20 @@ it does not interpret evaluator output or classify candidate correctness.
 from __future__ import annotations
 
 import os
-from dataclasses import replace
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from aka.contracts.execution import BackendCapabilities, CommandSpec, JobResult, ResourceIdentity
 from .runtime import ExecutionHooks, SandboxRequest, current_transport_arguments
 from aka.execution.job_recovery import GatewayRecoveryMixin, recovery_policy
+
+
+@dataclass
+class _DispatchScope:
+    admit: object
+    observe: object
+    closed: bool = False
 
 
 class LegacyExecutor(GatewayRecoveryMixin):
@@ -28,6 +36,7 @@ class LegacyExecutor(GatewayRecoveryMixin):
         self.request = request
         self.hooks = hooks
         self.configuration = dict(configuration or {})
+        self._dispatch_scope = None
         if request is not None and request.ssh:
             self.capabilities = replace(type(self).capabilities, source_archives=True, prepared_inputs=False)
         recovery_policy(self.configuration)
@@ -44,7 +53,31 @@ class LegacyExecutor(GatewayRecoveryMixin):
             request = replace(request, url=self.configuration["url"], profile="", ssh="")
         elif self.configuration.get("profile"):
             request = replace(request, profile=self.configuration["profile"], url="", ssh="")
-        return type(self)(request, hooks, configuration=self.configuration)
+        bound = type(self)(request, hooks, configuration=self.configuration)
+        bound._dispatch_scope = self._dispatch_scope
+        return bound
+
+    @contextmanager
+    def dispatch_scope(self, *, admit, observe):
+        """Attach Campaign admission to the real launcher, including bound copies."""
+        if not callable(admit) or not callable(observe):
+            raise TypeError("dispatch callbacks must be callable")
+        if self._dispatch_scope is not None:
+            raise RuntimeError("Legacy executor already belongs to a dispatch scope")
+        if self.configuration.get("idempotent_replay") or self.configuration.get("recovery_retry_delays"):
+            raise ValueError("Scoped Legacy executor requires replay and automatic recovery retries disabled")
+        scope = _DispatchScope(admit, observe)
+        self._dispatch_scope = scope
+        try:
+            yield self
+        finally:
+            scope.closed = True
+            self._dispatch_scope = None
+
+    def replay_job(self, command, *, idempotency_key):
+        if self._dispatch_scope is not None:
+            raise RuntimeError("Scoped Legacy executor does not permit automatic replay")
+        return super().replay_job(command, idempotency_key=idempotency_key)
 
     def _environment_backend(self):
         from aka.execution.environment_query import BackendEnvironment
@@ -62,6 +95,8 @@ class LegacyExecutor(GatewayRecoveryMixin):
         return self._environment_backend().check(query)
 
     def run(self, command: CommandSpec) -> JobResult:
+        if self._dispatch_scope is not None and self._dispatch_scope.closed:
+            raise RuntimeError("Legacy dispatch scope has been closed")
         from aka.execution.command_transport import prepared_input_workspace
         self.capabilities.require(command)
         with prepared_input_workspace(command) as physical:
@@ -118,7 +153,7 @@ class LegacyExecutor(GatewayRecoveryMixin):
             environment["AKA_GATEWAY_RECOVERY_RETRY_BUDGET_S"] = str(self.configuration.get("recovery_retry_budget_s", 0))
             request = replace(request, environment=environment)
         try:
-            result = self._run_sandbox(request, hooks=self.hooks)
+            result = self._run_sandbox(request, hooks=self.hooks, dispatch_command=command)
         except BaseException as error:
             if isinstance(getattr(error, "execution_outcome", None), JobResult):
                 error.execution_outcome = replace(error.execution_outcome,
@@ -128,7 +163,8 @@ class LegacyExecutor(GatewayRecoveryMixin):
         return replace(result, environment_snapshot=support.environment,
                        environment_identity=support.environment.identity, environment_support=support)
 
-    def _run_sandbox(self, request: SandboxRequest, *, hooks: ExecutionHooks) -> JobResult:
+    def _run_sandbox(self, request: SandboxRequest, *, hooks: ExecutionHooks,
+                     dispatch_command: CommandSpec | None = None) -> JobResult:
         workspace = request.workspace
         hardware = request.hardware
         profile = request.profile
@@ -198,17 +234,37 @@ class LegacyExecutor(GatewayRecoveryMixin):
         from aka.execution.outcomes import run_owned
         from aka.execution.prepared_inputs import payload as prepared_payload
         from aka.execution.gateway.requests import wait_budget_records
+        scope = self._dispatch_scope
+        permit = None
+        if scope is not None:
+            if scope.closed:
+                raise RuntimeError("Legacy dispatch scope has been closed")
+            permit = scope.admit(command=dispatch_command or CommandSpec(
+                workspace, tuple(command), environment=request.environment, hardware=hardware,
+                timeout=timeout, operation=gateway_kind, submission=request.submission))
+        def decorate(result):
+            return replace(result, budgets=(*result.budgets,
+                *wait_budget_records(effective_timeout, scope="local-wait", emit=False)))
+        def observed(result):
+            # The original Experiment owner persists its facts before the root.
+            if request.on_observation is not None:
+                request.on_observation(result)
+            if scope is not None:
+                scope.observe(permit, event="observation", value=decorate(result))
         try:
             result = run_owned(cmd, environment=environment, workspace=workspace,
                 timeout=effective_timeout, resource=self.resource_identity, hardware=hardware,
                 cancel_event=cancel_event, spawn=hooks.spawn, check_environment=hooks.check_environment,
-                input_payload=request.submission, on_observation=request.on_observation,
+                input_payload=request.submission,
+                on_observation=observed if request.on_observation is not None or scope is not None else None,
                 prepared_input_payload=prepared_payload(request.prepared_inputs, request.input_files))
         except BaseException as error:
             if isinstance(getattr(error, "execution_outcome", None), JobResult):
-                error.execution_outcome = replace(error.execution_outcome,
-                    budgets=(*error.execution_outcome.budgets,
-                        *wait_budget_records(effective_timeout, scope="local-wait", emit=False)))
+                error.execution_outcome = decorate(error.execution_outcome)
+            if scope is not None:
+                scope.observe(permit, event="error", value=error)
             raise
-        return replace(result, budgets=(*result.budgets,
-            *wait_budget_records(effective_timeout, scope="local-wait", emit=False)))
+        result = decorate(result)
+        if scope is not None:
+            scope.observe(permit, event="result", value=result)
+        return result

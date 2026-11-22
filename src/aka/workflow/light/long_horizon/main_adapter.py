@@ -27,7 +27,7 @@ from aka.workflow.light.orchestration.workspace_state import (
 )
 
 
-def prepare_campaign(campaign: Campaign) -> None:
+def prepare_campaign(campaign: Campaign, *, framework_baseline: bool = True) -> None:
     """Run current main's complete setup/resume prelude, excluding only its loop."""
     if latest_version(campaign.workspace) < 0:
         campaign.setup_baseline()
@@ -39,7 +39,8 @@ def prepare_campaign(campaign: Campaign) -> None:
             flush=True,
         )
         campaign._link_runtime()  # Compatibility seam intentionally isolated in this module.
-    campaign.ensure_framework_baseline()
+    if framework_baseline:
+        campaign.ensure_framework_baseline()
     if (
         campaign.optimization_mode == "production"
         and latest_version(campaign.workspace) > 0

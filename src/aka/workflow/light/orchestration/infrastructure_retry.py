@@ -6,6 +6,8 @@ import json
 import logging
 import math
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from concurrent.futures import CancelledError
 from pathlib import Path
 from threading import Event
@@ -15,6 +17,17 @@ from aka.core.filesystem import read_regular_bytes
 
 POLL_SECONDS = 60
 MAX_STATE_BYTES = 64 * 1024
+_bounded = ContextVar("aka_bounded_infrastructure", default=False)
+
+
+@contextmanager
+def bounded_infrastructure():
+    """Let an explicit serial owner settle outages instead of retrying forever."""
+    token = _bounded.set(True)
+    try:
+        yield
+    finally:
+        _bounded.reset(token)
 
 
 def _state_path(workspace: Path, category: str, key: str) -> Path:
@@ -110,6 +123,13 @@ def retry_infrastructure(workspace: Path, stage: str, operation, *, cancel=None)
     """
     from aka.workflow.budgets import cancellation
     cancel = cancellation(cancel) or Event()
+    from aka.workflow.legacy.checkpoint import read_schema_mode
+    if _bounded.get() or (read_schema_mode(workspace) or {}).get("schema_enabled"):
+        # The selected operation retains its native owner/receipt. The root
+        # must resolve an unknown operation before authorizing another call.
+        if cancel.is_set():
+            raise CancelledError("validation batch cancelled")
+        return operation()
     key = hashlib.sha256(stage.encode()).hexdigest()[:24]
     path = _state_path(workspace, "infrastructure", key)
     record = _load_retry_state(path, stage, "infrastructure")

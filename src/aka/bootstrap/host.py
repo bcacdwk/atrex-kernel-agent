@@ -46,8 +46,12 @@ def check_profile(profile: Path, **options) -> int:
             report.dispose()
 
 
-def run_selection(selection, invocation: Invocation) -> int:
+def run_selection(selection, invocation: Invocation, *, schema=None) -> int:
+    """Run the public selection; optional Schema imports occur only when selected."""
     with selection_runtime(selection.environment, selection.python_paths):
+        if schema is not None:
+            from aka.workflow.schema.launch import prepare_selection
+            selection, invocation = prepare_selection(selection, invocation, schema)
         return _run_selection(selection, invocation)
 
 

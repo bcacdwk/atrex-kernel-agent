@@ -13,6 +13,7 @@ Config = {"type": "object", "properties": {
     "profile": {"type": "string"},
     "profiles_dir": {"type": "string"},
     "patches": {"type": "array", "items": {"type": "object"}},
+    "measurement_parallelism": {"type": "integer", "minimum": 1},
 }, "required": ["profile"], "additionalProperties": False}
 interpolate = ("profiles_dir",)
 
@@ -23,6 +24,9 @@ def apply(ctx, config):
     from .selection import SELECTION_ENV, execution_scope
 
     selected = dict(config)
+    parallelism = selected.pop("measurement_parallelism", None)
+    if parallelism is not None and (type(parallelism) is not int or parallelism < 1):
+        raise ValueError("measurement_parallelism must be a positive integer")
     if "profiles_dir" in selected:
         selected["profiles_dir"] = str(Path(selected["profiles_dir"]).expanduser().resolve())
     inherited = os.environ.get(SELECTION_ENV)
@@ -36,7 +40,7 @@ def apply(ctx, config):
     from .configuration import selected_ssh
     ctx.provide(EXECUTOR, executor)
     ctx.provide(EXECUTION_CONTEXT, ExecutionContext(execution_environment(os.environ)))
-    ctx.provide(MEASUREMENT_PARALLELISM, 1 if selected_ssh() else 4)
+    ctx.provide(MEASUREMENT_PARALLELISM, parallelism if parallelism is not None else (1 if selected_ssh() else 4))
     from .selection import selected_agent_skills, selected_workspace_resources
     for kind, values in (("workspace_resources", selected_workspace_resources()),
                          ("agent_skills", selected_agent_skills())):

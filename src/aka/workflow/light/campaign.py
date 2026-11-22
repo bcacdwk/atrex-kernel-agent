@@ -39,10 +39,12 @@ class ManagedCampaign(Campaign):
         campaign.episode_evidence_reader = workflow.episode_evidence_reader
         campaign.episode_evidence_interpreter = workflow.episode_evidence_interpreter
         campaign.module_options = workflow.options
+        campaign.driver = getattr(workflow, "driver", None)
         from .runtime import ManagedRuntimeFactory
         campaign.tool_runtime = ManagedRuntimeFactory(workflow, campaign)
         from aka.resources.plugins import PluginRegistry
-        campaign._module_resources = PluginRegistry()
+        resources = getattr(workflow, "resources", None)
+        campaign._module_resources = resources if resources is not None else PluginRegistry()
         return campaign
 
     @property
@@ -70,6 +72,10 @@ class ManagedCampaign(Campaign):
         from aka.execution.recovery import EnvironmentUnavailable as LightEnvironmentUnavailable
 
         try:
+            if getattr(self, "driver", None) is not None:
+                from .orchestration.infrastructure_retry import bounded_infrastructure
+                with bounded_infrastructure():
+                    return self.driver.run(self)
             from aka.workflow.light.support.paths import supervisor_campaign_root
             search_root = supervisor_campaign_root(self.workspace) / "search"
             if self.module_options.search is not None:
@@ -149,6 +155,9 @@ class ManagedCampaign(Campaign):
             result = self.agent.runtime(agent_cli).run(AgentRunRequest(
                 workspace, prompt, timeout, reasoning_effort=reasoning_effort,
                 environment=values, access=selected_access, observation_directory=observation_directory))
+            observer = getattr(self, "native_usage_observer", None)
+            if observer is not None:
+                observer(result, workspace)
             return SessionResult(result.exit_status, result.timed_out,
                 result.terminal_usage.total_tokens or 0, result.stdout_tail, result.stderr_tail,
                 result.session_id, result.terminal_usage, result.events, result.capabilities,
@@ -244,7 +253,7 @@ class ManagedCampaign(Campaign):
                 text=saved.files["agent_problem.json"].decode("utf-8")))
         from aka.evaluation.resources import evaluator_harness
         harness = evaluator_harness(self.problem.evaluation)
-        if harness is None and self.problem.evaluation.adapter != "kernelschema-row-softmax-v1":
+        if harness is None:
             raise ValueError("Native V0 requires the frozen Task harness")
         runtime = self.problem_provider.runtime_files(self.problem)
         history = self.candidate_workspace.revision_history(self.workspace, changed_path="kernel.py")

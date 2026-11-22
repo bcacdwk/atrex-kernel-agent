@@ -266,10 +266,10 @@ class SupervisorRuntime:
         self.config = config
         if services is None or workspace_provider is None:
             raise TypeError("Workflow operations require explicitly selected shared modules")
-        if services.evaluation_input.adapter != "kernelschema-row-softmax-v1":
-            from aka.execution.gateway.native_options import audit_summary
-            logging.getLogger(__name__).warning("Agate native option audit: %s", json.dumps(audit_summary(), sort_keys=True))
+        from aka.execution.gateway.native_options import audit_summary
+        logging.getLogger(__name__).warning("Agate native option audit: %s", json.dumps(audit_summary(), sort_keys=True))
         self.agent, self.executor = services.agent, services.executor
+        self._record_services = services
         self.acceptance = CandidateGate()
         self.journal_factory = services.journal
         self.plugins = services.resources
@@ -367,6 +367,40 @@ class SupervisorRuntime:
         """
         return load_journal(self.episode_journal_path(episode))
 
+    def read_episode_draft(self, episode: int):
+        """Read the actual stopped draft, never the sealed or promoted source.
+
+        This does not register an Episode or repair missing draft state. A live
+        capability may still write, so it cannot be exported as a stable seed.
+        """
+        path = self.episode_journal_path(episode)
+        with self.lock:
+            if any(cap.journal is not None and cap.journal.service.path == path
+                   for cap in self.capabilities.values()):
+                raise RuntimeError("Cannot export an Episode draft with a live capability")
+            state = path.parent / "agent/state.json"
+            if not state.is_file():
+                raise LookupError("Episode has no retained native draft")
+            return self.workspace_provider.read_source(path.parent / "agent/workspace")
+
+    @contextmanager
+    def _record_reader(self):
+        services = self._record_services
+        with services.experiments.open(workspace=self.config.workspace or self.root,
+                purpose="development", executor=self.executor, evaluator=services.evaluator,
+                evaluation_input=self.evaluation_input, command_evaluator=services.command_evaluator) as records:
+            yield records
+
+    def read_experiment_records(self):
+        """Return original ExperimentRecord objects without execution/recovery."""
+        with self._record_reader() as records:
+            return tuple(records.iter_records())
+
+    def read_experiment_source(self, artifact):
+        """Resolve an original ExperimentArtifact through its source owner."""
+        with self._record_reader() as records:
+            return records.read_source(artifact)
+
     def register_episode(self, workspace: Path, *, episode: int, base_commit: str,
                          branch: str, memory_version: int,
                          supervisor_git: bool = False):
@@ -376,6 +410,9 @@ class SupervisorRuntime:
                 or memory_version < 1 or not isinstance(branch, str) or not branch
                 or re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", base_commit) is None):
             raise ValueError("Invalid controller Episode identity")
+        with self.lock:
+            if self.closed:
+                raise RuntimeError("Supervisor Runtime is closed")
         path = self.episode_journal_path(episode)
         evidence = path.parent
         self.journal_factory.initialize(path, episode=episode, base_commit=base_commit,

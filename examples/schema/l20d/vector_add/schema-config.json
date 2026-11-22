@@ -1,0 +1,22 @@
+{
+  "format": "aka.schema.launch.v1",
+  "continuous": true,
+  "wiki_ids": [],
+  "limits": {
+    "per_call_active_seconds": 3600,
+    "per_job_timeout_seconds": 3600
+  },
+  "planner": {
+    "timeout_seconds": 3600,
+    "max_repairs": 1,
+    "check_policy": {"skip_hardware": true, "style": "advisory"}
+  },
+  "initial": {
+    "schema": "schema",
+    "source_files": {
+      "kernel.py": "105d89d7432e0662625b9388df68ac1f36ecfcecb1bd4494074b3adc7a5f7e5f"
+    },
+    "hardware": "L20D",
+    "evidence": ["published/results.json", "ORIGIN.json"]
+  }
+}

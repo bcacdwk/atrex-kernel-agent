@@ -1,0 +1,26 @@
+{
+  "perf_gpu": "L20D",
+  "num_shapes": 3,
+  "shapes": {
+    "0": {
+      "production_performance": {
+        "performance_us": 9.456000290811062
+      }
+    },
+    "1": {
+      "production_performance": {
+        "performance_us": 11.215999722480774
+      }
+    },
+    "2": {
+      "production_performance": {
+        "performance_us": 11.264000087976456
+      }
+    }
+  },
+  "baseline_provenance": {
+    "kind": "measured PyTorch reference, not a production-kernel claim",
+    "job_id": "ev_1861beac3248",
+    "request_sha256": "6ee97cb4d6625fa78a5201c964f13ba3db53cc33b9ba2259c6c4f9cd888e2369"
+  }
+}

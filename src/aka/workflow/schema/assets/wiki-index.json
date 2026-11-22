@@ -1,0 +1,215 @@
+{
+  "entries": [
+    {
+      "directory": "aka-cuda-operators-20261030/operators/fmha/fmha_bf16",
+      "files": [
+        "mma_sync_decode.yaml",
+        "root.yaml",
+        "split_kv_prefill.yaml",
+        "tc_prefill_cpasync.yaml",
+        "dispatch.md"
+      ],
+      "id": "fmha_bf16",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/fmha/fmha_fp8_per_token_head",
+      "files": [
+        "decode_split_kv.yaml",
+        "root.yaml",
+        "tcgen05_prefill.yaml",
+        "dispatch.md"
+      ],
+      "id": "fmha_fp8_per_token_head",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/fmha/fmha_mxfp8_qkv",
+      "files": [
+        "mma_sync.yaml",
+        "root.yaml",
+        "split_kv.yaml",
+        "dispatch.md"
+      ],
+      "id": "fmha_mxfp8_qkv",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/gemm/dense/bf16_nvfp4_gemm",
+      "files": [
+        "pair_stream_k.yaml",
+        "pair_two_pass.yaml",
+        "root.yaml",
+        "simt_warp_row.yaml",
+        "split_k_reduce.yaml",
+        "umma_single_cta.yaml",
+        "weight_band_mma.yaml",
+        "dispatch.md"
+      ],
+      "id": "bf16_nvfp4_gemm",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/gemm/grouped/fp8_scaled_grouped_gemm",
+      "files": [
+        "root.yaml",
+        "wide.yaml",
+        "dispatch.md"
+      ],
+      "id": "fp8_scaled_grouped_gemm",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/gemm/grouped_masked/fp8_mxfp4_grouped_gemm_masked",
+      "files": [
+        "root.yaml",
+        "dispatch.md"
+      ],
+      "id": "fp8_mxfp4_grouped_gemm_masked",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/linear_attention/gdn_conv_mtp_bf16_state_bf16",
+      "files": [
+        "fused_single_launch.yaml",
+        "root.yaml",
+        "warp_row_reduction.yaml",
+        "dispatch.md"
+      ],
+      "id": "gdn_conv_mtp_bf16_state_bf16",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/linear_attention/gdn_prefill_bf16_state_bf16",
+      "files": [
+        "root.yaml",
+        "segmented.yaml",
+        "dispatch.md"
+      ],
+      "id": "gdn_prefill_bf16_state_bf16",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/linear_attention/kda_raw_prefill_state_bf16",
+      "files": [
+        "prepare_chain.yaml",
+        "root.yaml",
+        "dispatch.md"
+      ],
+      "id": "kda_raw_prefill_state_bf16",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/mla/mla_absorbed_fp8",
+      "files": [
+        "root.yaml",
+        "simt.yaml",
+        "split_kv.yaml",
+        "dispatch.md"
+      ],
+      "id": "mla_absorbed_fp8",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/mla/mla_expanded_fp8",
+      "files": [
+        "root.yaml",
+        "dispatch.md"
+      ],
+      "id": "mla_expanded_fp8",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/mla/mla_nvfp4",
+      "files": [
+        "root.yaml",
+        "dispatch.md"
+      ],
+      "id": "mla_nvfp4",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/moe/bf16_fused_moe",
+      "files": [
+        "root.yaml",
+        "dispatch.md"
+      ],
+      "id": "bf16_fused_moe",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/moe/fp8_scaled_fused_moe",
+      "files": [
+        "mma_sync_fused.yaml",
+        "root.yaml",
+        "split_k_decode.yaml",
+        "dispatch.md"
+      ],
+      "id": "fp8_scaled_fused_moe",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/moe/nvfp4_fused_moe",
+      "files": [
+        "mega.yaml",
+        "root.yaml",
+        "split_k.yaml",
+        "dispatch.md"
+      ],
+      "id": "nvfp4_fused_moe",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/sparse_attention/dual_cache_latent_bf16",
+      "files": [
+        "root.yaml",
+        "split_kv.yaml",
+        "tcgen05.yaml",
+        "tcgen05_packed.yaml",
+        "dispatch.md"
+      ],
+      "id": "dual_cache_latent_bf16",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/sparse_attention/paged_indexed_latent_fp8",
+      "files": [
+        "cluster_m128.yaml",
+        "root.yaml",
+        "split8_merge.yaml",
+        "dispatch.md"
+      ],
+      "id": "paged_indexed_latent_fp8",
+      "skip_hardware": true,
+      "status": "reference_only"
+    },
+    {
+      "directory": "aka-cuda-operators-20261030/operators/sparse_attention/paged_latent_mxfp8_nvfp4",
+      "files": [
+        "root.yaml",
+        "tcgen05_tmem.yaml",
+        "dispatch.md"
+      ],
+      "id": "paged_latent_mxfp8_nvfp4",
+      "skip_hardware": true,
+      "status": "reference_only"
+    }
+  ],
+  "format": "aka.schema.wiki-index.v1"
+}

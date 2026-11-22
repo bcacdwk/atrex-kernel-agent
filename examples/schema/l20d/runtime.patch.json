@@ -1,0 +1,20 @@
+{
+  "api_version": 1,
+  "patches": [
+    {"id": "agent", "config": {
+      "sandbox": "bwrap", "proc_mode": "projected", "timeout_seconds": 3600
+    }},
+    {"id": "execution", "config": {
+      "profile": "legacy", "measurement_parallelism": 1
+    }},
+    {"id": "evaluation", "config": {
+      "comparison_method": "native-abba", "measurement_repetitions": 1, "shape_batch_size": 10
+    }},
+    {"id": "workflow", "config": {
+      "startup": true, "episode_timeout_seconds": 3600,
+      "queue_timeout": 60, "request_timeout": 7500,
+      "search": {}, "wiki": false, "inherit_state": false,
+      "generate_memory": false, "research_records": false, "goal_episodes": false
+    }}
+  ]
+}

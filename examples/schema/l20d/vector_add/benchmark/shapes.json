@@ -1,0 +1,26 @@
+{
+  "0": {
+    "init_kwargs": {
+      "alpha": 1.0
+    },
+    "input_kwargs": {
+      "numel": 1024
+    }
+  },
+  "1": {
+    "init_kwargs": {
+      "alpha": 0.5
+    },
+    "input_kwargs": {
+      "numel": 65536
+    }
+  },
+  "2": {
+    "init_kwargs": {
+      "alpha": 2.0
+    },
+    "input_kwargs": {
+      "numel": 1048576
+    }
+  }
+}

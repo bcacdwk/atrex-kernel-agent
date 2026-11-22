@@ -28,6 +28,8 @@ class LegacyWorkflow:
 
     def _campaign(self, request: CampaignRequest, problem: LoadedProblem):
         self._check_open()
+        from .checkpoint import check_schema_mode
+        check_schema_mode(request.workspace)
         from .campaign import Campaign
 
         return Campaign(
@@ -37,6 +39,8 @@ class LegacyWorkflow:
     def _load_problem(self, request: CampaignRequest) -> LoadedProblem:
         """Capture or restore run inputs before campaign-specific preparation."""
         self._check_open()
+        from .checkpoint import check_schema_mode
+        check_schema_mode(request.workspace)
         problem = self._dependencies.problem.load(
             request.problem.directory,
             optimization_mode=request.settings.optimization_mode,

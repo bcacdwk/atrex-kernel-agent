@@ -1,13 +1,15 @@
-"""Explicit source release selection. Called only after Schema is enabled."""
+"""Verify AKA Schema language/materials/prompts without discovering upstream code."""
 from __future__ import annotations
 
 from importlib import metadata
-from importlib.resources import files
-from importlib.util import find_spec
 import hashlib
 import json
-from pathlib import Path
-import stat
+from pathlib import Path, PurePosixPath
+
+from .language import LANGUAGE_VERSION, CapacityError
+from .language.yaml_source import ReadError, read_source_bytes
+
+ROOT = Path(__file__).parent
 
 
 class SchemaUnavailable(ValueError):
@@ -15,41 +17,31 @@ class SchemaUnavailable(ValueError):
 
 
 def verify_release() -> dict:
-    """Verify the installed KS code/resources against the shipped selected manifest.
+    """Check language and role materials against the shipped local inventory.
 
-    No checkout search, git command, network call or automatic installation occurs.
-    An exact extracted checkout is supported as well as the detached submodule.
+    This works from a source checkout or unpacked wheel, with no upstream
+    package, source checkout, Git object, command, parser or network access.
     """
-    raw = files(__package__).joinpath("release.json").read_bytes()
-    release = json.loads(raw)
-    spec = find_spec("kernelschema")
-    if spec is None or not spec.origin or not spec.origin.endswith(".py"):
-        raise SchemaUnavailable(
-            "Schema needs the fixed KernelSchema source/editable installation; "
-            "see docs/schema-optional-module.md")
-    root = Path(spec.origin).resolve().parent.parent
-    for name, expected in release["files"].items():
-        path = root / name
-        try:
-            info = path.lstat()
-            if not stat.S_ISREG(info.st_mode) or path.resolve() != path:
-                raise OSError("not a regular selected release file")
-            observed = hashlib.sha256(path.read_bytes()).hexdigest()
-        except OSError as error:
-            raise SchemaUnavailable(f"fixed KernelSchema resource missing: {name}") from error
-        if observed != expected["sha256"] or stat.S_IMODE(info.st_mode) != expected["mode"]:
-            raise SchemaUnavailable(f"fixed KernelSchema resource changed: {name}")
-    # No unverified KS initializer/backend runs while selecting this release.
-    import kernelschema
-    from kernelschema.resources import checkout_root
-    if (Path(kernelschema.__file__).resolve().parent != root / "kernelschema"
-            or checkout_root().resolve() != root):
-        raise SchemaUnavailable("KernelSchema import and resource roots differ")
+    try:
+        raw = read_source_bytes(ROOT / "release.json")
+        release = json.loads(raw)
+        if release.get("format") != "aka.schema.release.v2" or release.get("language_version") != LANGUAGE_VERSION:
+            raise ValueError("unsupported AKA Schema release identity")
+        for name, expected in release["files"].items():
+            member = PurePosixPath(name)
+            if (member.is_absolute() or ".." in member.parts or str(member) != name or "\\" in name
+                    or (name != "NOTICE.md" and (len(member.parts) < 2 or member.parts[0] not in {"language", "assets", "prompts"}))):
+                raise ValueError(f"invalid release member {name!r}")
+            value = read_source_bytes(ROOT / name)
+            if len(value) != expected["size"] or hashlib.sha256(value).hexdigest() != expected["sha256"]:
+                raise ValueError(f"AKA Schema release resource changed: {name}")
+    except (OSError, ValueError, KeyError, ReadError, CapacityError) as error:
+        raise SchemaUnavailable(str(error)) from error
     try:
         installed = metadata.version("atrex-aka-schema")
-    except metadata.PackageNotFoundError as error:
-        raise SchemaUnavailable("install the matching atrex-aka-schema package") from error
+    except metadata.PackageNotFoundError:
+        installed = "source"
     return {"aka_distribution": "atrex-aka-schema", "aka_version": installed,
-            "ks_commit": release["commit"], "ks_url": release["url"],
-            "ks_root": str(root), "ks_module": str(Path(kernelschema.__file__).resolve()),
-            "manifest_sha256": "sha256:" + hashlib.sha256(raw).hexdigest()}
+            "language_version": release["language_version"], "resource_root": str(ROOT.absolute()),
+            "manifest_sha256": hashlib.sha256(raw).hexdigest(),
+            "provenance": release["provenance"]}

@@ -1,0 +1,37 @@
+{
+  "format": "aka.example-inputs.v1",
+  "source_repository_commit": "d709f1eabd5cdcd8347673037583a8810537038c",
+  "files": {
+    "benchmark/reference.py": {
+      "repository": "AKA_experiment",
+      "path": "assets/bench/data/fp8_scale_group_gemm/reference.py",
+      "sha256": "304a60ad870b5282b0d1431c95b769b079ccc2249bddce371db2c024af7a2c78"
+    },
+    "benchmark/input.py": {
+      "repository": "AKA_experiment",
+      "path": "assets/bench/data/fp8_scale_group_gemm/input.py",
+      "sha256": "3bfb3e91eceb44c0f5b9b41749bf45fe456a8e88a6583577b8d809723abddb5d"
+    },
+    "benchmark/shapes.json": {
+      "repository": "AKA_experiment",
+      "path": "assets/bench/data/fp8_scale_group_gemm/shapes.json",
+      "sha256": "bd005a46a14a6b3f2b59bc95aa086195ec5bbc1696314b6f66a7a62f8735e845"
+    },
+    "benchmark/roofline.json": {
+      "repository": "AKA_experiment",
+      "path": "assets/bench/data/fp8_scale_group_gemm/roofline.json",
+      "sha256": "ccbbbe638072aff663eea07bc2d8c5ad6406d93c291ee9734c923bfcbbaf6af6"
+    },
+    "published/metadata.json": {
+      "repository": "AKA_experiment",
+      "path": "assets/bench/data/fp8_scale_group_gemm/metadata.json",
+      "sha256": "7cd4116119fcc7ce2aa1f1e9c0a3764f943b0967c70d00c3949a3b4a240bbc18"
+    }
+  },
+  "adapted_metadata_sha256": "037132db269ffbb760b42e5f4205f57fbc640eff94cae72a37bd203486732c4f",
+  "scenario": "no_sota_design_then_implement",
+  "initial_kernel": null,
+  "initial_schema": null,
+  "new_gpu_verification": false,
+  "reference_only": true
+}

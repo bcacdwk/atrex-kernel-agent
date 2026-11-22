@@ -28,6 +28,25 @@ OWNERS = {
 
 
 def owned(distribution: str) -> tuple[Path, ...]:
+    if distribution == 'atrex-aka-schema':
+        # Business modules and the frozen material inventory are the entire
+        # local allowlist. Suffix filters omit YAML and extensionless notices;
+        # repository discovery would reintroduce an upstream build dependency.
+        root = ROOT / 'src/aka/workflow/schema'
+        modules = ('__init__.py', 'launch.py', 'plugin.py', 'release.py', 'materials.py',
+                   'planner.py', 'run_state.py', 'workflow.py', 'extract_sources.py', 'extract_stages.py')
+        inventory = json.loads((root / 'release.json').read_text())['files']
+        files = [root / name for name in (*modules, 'release.json')]
+        for name, expected in inventory.items():
+            path = root / name
+            if (Path(name).is_absolute() or '..' in Path(name).parts
+                    or path.is_symlink() or path.resolve() != path):
+                raise ValueError(f'invalid local Schema release member: {name}')
+            raw = path.read_bytes()
+            if len(raw) != expected['size'] or hashlib.sha256(raw).hexdigest() != expected['sha256']:
+                raise ValueError(f'Schema release differs from the local build input: {name}')
+            files.append(path)
+        return tuple(dict.fromkeys(files))
     files = []
     suffixes = ('.py', '.json', '.html', '.woff2', '.txt') if distribution == 'atrex-aka-dashboard' else ('.py', '.json', '.sh', '.md')
     for relative in OWNERS[distribution]:
@@ -84,10 +103,17 @@ def build(distribution: str, output: Path) -> None:
         shutil.copy2(ROOT / 'packages' / distribution / 'pyproject.toml', stage / 'pyproject.toml')
         for legal in ('LICENSE', 'NOTICE'):
             shutil.copy2(ROOT / legal, stage / legal)
-        for source in owned(distribution):
+        sources = owned(distribution)
+        for source in sources:
             target = stage / 'src' / source.relative_to(ROOT / 'src')
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
+        if distribution == 'atrex-aka-schema':
+            # Explicit manifest includes retained .extraction receipts too;
+            # glob/package discovery intentionally skips dot directories.
+            (stage / 'MANIFEST.in').write_text(''.join(
+                'include src/' + source.relative_to(ROOT / 'src').as_posix() + '\n'
+                for source in sources))
         # The default `build` operation deliberately builds a wheel from the sdist.
         subprocess.run([sys.executable, '-m', 'build', '--outdir', str(output.resolve())], cwd=stage, check=True)
 

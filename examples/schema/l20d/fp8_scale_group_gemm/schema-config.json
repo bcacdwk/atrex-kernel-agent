@@ -1,0 +1,9 @@
+{
+  "format": "aka.schema.launch.v1",
+  "continuous": true,
+  "limits": {
+    "per_call_active_seconds": 3600,
+    "per_job_timeout_seconds": 3600
+  },
+  "planner": {"timeout_seconds": 3600, "max_repairs": 1}
+}

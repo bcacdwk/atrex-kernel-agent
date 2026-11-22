@@ -74,10 +74,7 @@ def request_from_argv(argv, *, workspace, evaluation_input, configuration, works
     Endpoint, credentials, retries and execution availability stay with Execution.
     """
     if evaluation_input is not None and evaluation_input.adapter == "kernelschema-row-softmax-v1":
-        from aka.workflow.schema.command import request_from_argv as schema_request
-        return schema_request(argv, workspace=workspace, evaluation_input=evaluation_input,
-            configuration=configuration, workspace_provider=workspace_provider,
-            defaults=defaults, filesystem_access=filesystem_access)
+        raise ValueError("Retired KernelSchema evaluation adapter; prepare a native AKA Task in a new workspace")
     from aka.execution.command_syntax import requested_operation
     from .command_inputs import workload_environment
     from .gateway_request import prepare_request, _candidate_languages

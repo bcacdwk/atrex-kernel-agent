@@ -1,0 +1,37 @@
+{
+  "0.common.md": {
+    "source": "ks/schema_docs/0.common.md",
+    "source_sha256": "9b230802ad9440ec4b3aad0319dedbf231611a5b7bcd1db4ae773e99a9282eb6",
+    "view_sha256": "6807ed56c18dcd0d06c588b35e08a54f986d1eecffee274de4ff8aeb2b0d4b37"
+  },
+  "1.contract.algorithm_requirement.md": {
+    "source": "ks/schema_docs/1.contract.algorithm_requirement.md",
+    "source_sha256": "0f4a46cb087ae1f7abff1e9c78660e4a8dfe080cd9a2fd68b0367c7a9d55fe97",
+    "view_sha256": "0f4a46cb087ae1f7abff1e9c78660e4a8dfe080cd9a2fd68b0367c7a9d55fe97"
+  },
+  "2.contract.hardware_specification.md": {
+    "source": "ks/schema_docs/2.contract.hardware_specification.md",
+    "source_sha256": "ba58edadeeaa4efa5a1085bc84becb238a8ce2d290a66abb80ce6b3c26b14a50",
+    "view_sha256": "5f95832ff62a1b1a0695ecdcbc25a99104289a066e1a5b9e657baa702ed5b949"
+  },
+  "3.design.math_reshape.md": {
+    "source": "ks/schema_docs/3.design.math_reshape.md",
+    "source_sha256": "a581258ec24779ebf7e08037c6c0f52b4956970029d1bb8357013c986fad1079",
+    "view_sha256": "a581258ec24779ebf7e08037c6c0f52b4956970029d1bb8357013c986fad1079"
+  },
+  "4.design.work_schedule.md": {
+    "source": "ks/schema_docs/4.design.work_schedule.md",
+    "source_sha256": "96fb95e2e14d9ac2d22a36e9ccacf10da502da8f4526849e8fa56d24eb9a7430",
+    "view_sha256": "96fb95e2e14d9ac2d22a36e9ccacf10da502da8f4526849e8fa56d24eb9a7430"
+  },
+  "5.design.tile_pipeline.md": {
+    "source": "ks/schema_docs/5.design.tile_pipeline.md",
+    "source_sha256": "4a1af17dd6787a5f3b76e287aa7f9c734314a3e530d52f95b2880fcb44a06759",
+    "view_sha256": "bc3f4f95eccd23beb203f9fa78d623de9101b1eacd5cb418598687eede50fcb6"
+  },
+  "6.realization.md": {
+    "source": "ks/schema_docs/6.realization.md",
+    "source_sha256": "899621bb24e7e2d721afe715f306ee01808625df721c2481e9aa2f92adefc458",
+    "view_sha256": "7d79f2c037ff8b9baab1292571b274f5570d5f13340c357198a7e45a4ac47fc9"
+  }
+}

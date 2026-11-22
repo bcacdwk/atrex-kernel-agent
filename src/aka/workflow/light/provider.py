@@ -60,7 +60,8 @@ class LightWorkflow:
     def __init__(self, agent, problem, source, candidate, *, executor, execution_context,
                  experiment_factory, evaluator_factory, evaluation_defaults,
                  measurement_parallelism=4, workflow_observer=None, options=WorkflowOptions(),
-                 episode_evidence_reader=None, episode_evidence_interpreter=None):
+                 episode_evidence_reader=None, episode_evidence_interpreter=None,
+                 driver=None, resources=None, driver_factory=None):
         if not agent.capabilities.tool_runtime:
             raise ValueError("light Workflow requires an Agent with scoped tool sessions")
         if any(not callable(getattr(candidate, method, None)) for method in (
@@ -69,6 +70,21 @@ class LightWorkflow:
             raise ValueError("light Workflow requires public source, sealed-candidate and file transactions")
         self.agent, self.problem, self.source, self.candidate = agent, problem, source, candidate
         self.options = options
+        self.driver, self.resources = driver, resources
+        self.driver_factory = driver_factory
+        self._driver_workspace = None
+        if driver is not None and driver_factory is not None:
+            raise ValueError("Select a driver or a request-bound driver factory")
+        if driver is not None or driver_factory is not None:
+            if driver_factory is not None and not callable(driver_factory):
+                raise TypeError("Light driver factory must be callable")
+            if driver is not None and (not callable(getattr(driver, "run", None)) or not getattr(driver, "root_ref", None)):
+                raise TypeError("Light driver requires run(campaign) and a persistent root_ref")
+            if resources is None or getattr(resources, "wiki_provider", None) is not None:
+                raise ValueError("Driven Light requires explicit resources without a dynamic Wiki provider")
+            if (options.search is not None or options.goal_episodes or options.generate_memory
+                    or options.wiki or options.research_records or options.inherit_state):
+                raise ValueError("Driven Light requires serial Episodes and fixed resources without inherited tools")
         if not callable(getattr(evaluator_factory, "create_command", None)):
             raise TypeError("Selected Evaluation does not provide command preparation")
         self.executor, self.execution_context = executor, execution_context
@@ -87,6 +103,7 @@ class LightWorkflow:
 
     def _load_problem(self, request: CampaignRequest) -> LoadedProblem:
         self._check_open()
+        self._check_mode(request, create=True)
         snapshot = request.problem.snapshot_directory
         if snapshot is None:
             import hashlib
@@ -108,6 +125,26 @@ class LightWorkflow:
                 "light Workflow requires explicit Problem initial-source and evaluation roles"
             )
         return problem
+
+    def _check_mode(self, request, *, create=False):
+        from aka.workflow.legacy.checkpoint import check_schema_mode
+        if getattr(self, "driver_factory", None) is not None:
+            if not request.settings.framework:
+                raise ValueError("Driven Light requires an explicit framework for its single native campaign")
+            if self.driver is None:
+                self.driver = self.driver_factory(request)
+                if not callable(getattr(self.driver, "run", None)) or not getattr(self.driver, "root_ref", None):
+                    raise TypeError("Light driver factory requires run(campaign) and a persistent root_ref")
+                self._driver_workspace = request.workspace
+            elif self._driver_workspace != request.workspace:
+                raise ValueError("Driven Light selection belongs to one native campaign workspace")
+        if self.driver is not None:
+            settings = request.settings
+            if (settings.framework_baseline != "never" or settings.framework_baseline_reviewers
+                    or settings.convert_after != 0):
+                raise ValueError("Driven Light preparation requires no V1/reviewers, conversion or memory generation")
+        check_schema_mode(request.workspace, enabled=self.driver is not None,
+            root_ref=str(self.driver.root_ref) if self.driver is not None else None, create=create)
 
     def campaign(self, request: CampaignRequest):
         self._check_open()
@@ -142,10 +179,10 @@ class LightWorkflow:
     def _campaign(self, request, problem):
         from .campaign import ManagedCampaign
         self._check_open()
+        self._check_mode(request)
         if not isinstance(problem, LoadedProblem) or problem.agent is None or problem.initial_source is None or problem.evaluation is None:
             raise TypeError("light Workflow requires explicit public, initial-source and evaluator Problem roles")
-        if (problem.initial_source.kind != "sol" and problem.evaluation.runtime_root is None
-                and problem.evaluation.adapter != "kernelschema-row-softmax-v1"):
+        if (problem.initial_source.kind != "sol" and problem.evaluation.runtime_root is None):
             raise ValueError("light Workflow deterministic V0 requires native Atrex-Bench or SOL; use legacy for custom setup")
         evaluation = self._evaluation_settings(request)
         campaign = ManagedCampaign.create(request, problem, self, evaluation)

@@ -24,6 +24,54 @@ from .public_state import campaign_lease, writer_active
 SCHEMA = 'aka.workflow.checkpoint.v1'
 CONTEXT = '.atrex_long_horizon/checkpoint-context.json'
 CAPTURED_FACTS = '.atrex_long_horizon/checkpoint-facts.json'
+SCHEMA_MODE = '.atrex_long_horizon/schema-mode.json'
+
+
+def _decode_schema_mode(raw):
+    if raw is None:
+        return None
+    value = json.loads(raw)
+    if (not isinstance(value, dict) or set(value) != {'schema_enabled', 'root_ref'}
+            or type(value['schema_enabled']) is not bool
+            or (value['schema_enabled'] and (not isinstance(value['root_ref'], str) or not value['root_ref']))
+            or (not value['schema_enabled'] and value['root_ref'] is not None)):
+        raise ValueError('invalid native Schema mode marker')
+    return value
+
+
+def read_schema_mode(workspace):
+    """Read only the native marker; never import the optional Schema package."""
+    from aka.core.filesystem import read_regular_bytes
+    try:
+        raw = read_regular_bytes(Path(workspace) / SCHEMA_MODE, limit=16 * 1024 + 1)
+    except FileNotFoundError:
+        return None
+    if len(raw) > 16 * 1024:
+        raise ValueError('native Schema mode marker exceeds its size limit')
+    return _decode_schema_mode(raw)
+
+
+def check_schema_mode(workspace, *, enabled=False, root_ref=None, create=False):
+    """Check mode before Task loading; only an explicit on owner creates it."""
+    workspace = Path(workspace)
+    expected = {'schema_enabled': enabled, 'root_ref': root_ref}
+    _decode_schema_mode(json.dumps(expected))
+    previous = read_schema_mode(workspace)
+    if previous is not None and previous != expected:
+        raise ValueError('workspace Schema mode/root differs; resume its original controller')
+    if previous is None and enabled:
+        if workspace.exists() and any(workspace.iterdir()):
+            raise ValueError('Schema cannot take over an existing unmarked workspace')
+        if create:
+            from aka.core.filesystem import durable_write_json
+            durable_write_json(workspace / SCHEMA_MODE, expected)
+    return previous
+
+
+def _reject_schema_checkpoint(workspace):
+    mode = read_schema_mode(workspace)
+    if mode is not None and mode['schema_enabled']:
+        raise ValueError('Schema checkpoint export/import is unsupported; resume the original root in place')
 
 
 def record_context(campaign):
@@ -135,6 +183,7 @@ def _info(metadata, content):
 
 def generate(workspace, *, candidate_workspace):
     workspace=Path(workspace).resolve()
+    _reject_schema_checkpoint(workspace)
     with campaign_lease(workspace):
         stopped=document(workspace/'.atrex_long_horizon/writer-state.json')
         # An idle lock does not turn a hard-crashed writer into a recorded clean stop.
@@ -175,6 +224,7 @@ def generate(workspace, *, candidate_workspace):
 
 
 def _validate(root, metadata, expected_workspace, expected_campaign_id, services):
+    _reject_schema_checkpoint(expected_workspace)
     if any(type(metadata.get(key)) is not int or metadata[key] < 0 for key in ('tokens','episodes','incumbent_version')):
         raise ValueError('invalid checkpoint counters')
     workspace=Path(metadata['workspace'])
@@ -191,6 +241,10 @@ def _validate(root, metadata, expected_workspace, expected_campaign_id, services
     target=Path(context['problem']['directory'])
     problem.validate_snapshot(ps,destination=target)
     state=candidate.validate_checkpoint(ws,check_destinations=True)
+    for entry in metadata['entries']:
+        if entry['path'].endswith('/' + SCHEMA_MODE):
+            if (_decode_schema_mode((root / entry['path']).read_bytes()) or {}).get('schema_enabled'):
+                raise ValueError('Schema checkpoint import is unsupported')
     if state.workspace != workspace or state.candidates:
         raise ValueError('checkpoint workspace/state does not match stopped mode')
     agent.validate_checkpoint(ag,check_destinations=True)
@@ -225,6 +279,7 @@ def _validate(root, metadata, expected_workspace, expected_campaign_id, services
 
 
 def validate(content, *, workspace, campaign_id):
+    _reject_schema_checkpoint(workspace)
     with tempfile.TemporaryDirectory(prefix='aka-checkpoint-validate-') as raw:
         root=Path(raw).resolve(); metadata=_unpack(content,root)
         with _services(metadata['context']['selection']) as services:
@@ -235,6 +290,7 @@ def validate(content, *, workspace, campaign_id):
 
 
 def restore(content, *, workspace, campaign_id):
+    _reject_schema_checkpoint(workspace)
     with tempfile.TemporaryDirectory(prefix='aka-checkpoint-restore-') as raw:
         root=Path(raw).resolve();metadata=_unpack(content,root)
         with _services(metadata['context']['selection']) as services:
@@ -250,6 +306,7 @@ def restore(content, *, workspace, campaign_id):
 
 
 def resume(workspace, *, campaign_id, candidate_workspace):
+    _reject_schema_checkpoint(workspace)
     from aka.bootstrap.host import run_selection
     from aka.contracts.startup import Invocation
     workspace=Path(workspace).resolve()

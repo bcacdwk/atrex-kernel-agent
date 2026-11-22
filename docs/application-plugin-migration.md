@@ -52,7 +52,7 @@ python -m pip install --force-reinstall "$AKA_DIST"/*.whl
 ```
 
 This explicitly builds the original five distributions in a fresh directory.
-Schema is opt-in; use its [matching source and package installation](schema-standard-workflow.md#install-and-legacy-compatibility)
+Schema is opt-in; use its [matching package installation](schema-workflow.md)
 when selecting `--schema`.
 
 The installed packages require a **matching resource checkout** for declared external resources.

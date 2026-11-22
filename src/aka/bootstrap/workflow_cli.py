@@ -40,30 +40,28 @@ def main(argv=None):
     parser.add_argument("--patch", type=Path, action="append", default=[])
     parser.add_argument("--schema", action=argparse.BooleanOptionalAction, default=None,
                         help="enable optional Schema assistance in native Light (default: off)")
-    parser.add_argument("--schema-path", type=Path,
-                        help="raw Schema file/directory for the normal Light implementation loop")
-    parser.add_argument("--schema-iterate", action="store_true",
-                        help="with --schema, run finite write-only design/optimize around native campaigns")
-    parser.add_argument("--schema-task", type=Path, help="explicit writing task-description file")
-    parser.add_argument("--schema-out", type=Path, help="new automatic iteration directory; never replay existing output")
-    parser.add_argument("--schema-rounds", type=int, default=None,
-                        help="maximum Schema versions/native campaigns (default: 2); each retains --max-iters")
-    parser.add_argument("--schema-runtime-profile", type=Path, help="writing ClaudeProfile JSON")
-    parser.add_argument("--schema-reference", type=Path, action="append", default=[],
-                        help="selected writing reference file; repeatable")
-    parser.add_argument("--schema-objective", type=Path, help="optional writing objective file")
-    parser.add_argument("--schema-environment", type=Path, help="optional writing target description file")
-    parser.add_argument("--schema-doc", type=Path, action="append", default=[],
-                        help="additional Schema documentation to pass to the coding agent (repeatable)")
-    parser.add_argument("--schema-owner-account", type=Path,
-                        help="existing KernelSchema parent budget authority")
-    parser.add_argument("--schema-owner-limits", type=json.loads,
-                        help='finite native allocation, e.g. {"model_calls":2,"evaluator_jobs":4}')
-    parser.add_argument("--schema-owner-run-id", help="existing active parent request ID, if any")
     parser.add_argument("--schema-config", type=Path,
-                        help="legacy strict Schema selection JSON; read only with --schema")
+                        help="AKA Schema launch JSON (aka.schema.launch.v1)")
+    parser.add_argument("--schema-path", type=Path,
+                        help="complete initial Schema directory; requires pairing fields in --schema-config")
+    parser.add_argument("--schema-continuous", action=argparse.BooleanOptionalAction, default=None,
+                        help="continue design/implementation without an implicit total iteration cap")
+    parser.add_argument("--schema-limits", type=json.loads,
+                        help="explicit Schema RunLimits JSON object; finite budgets remain effective")
+    # Recognize retired flags solely to diagnose them; none activates old code.
+    retired = ("iterate", "task", "out", "rounds", "runtime-profile", "reference", "objective",
+               "environment", "doc", "owner-account", "owner-limits", "owner-run-id")
+    for name in retired:
+        parser.add_argument("--schema-" + name, dest="retired_" + name.replace("-", "_"),
+                            action="store_true" if name == "iterate" else "store", help=argparse.SUPPRESS)
     register_request_options(parser)
     options = parser.parse_args(argv)
+    if any(getattr(options, "retired_" + name.replace("-", "_")) for name in retired):
+        parser.error("retired strict/dynamic/iterate Schema options; use --schema with aka.schema.launch.v1")
+    schema_options = (options.schema_config is not None or options.schema_path is not None
+                      or options.schema_continuous is not None or options.schema_limits is not None)
+    if schema_options and not options.schema:
+        parser.error("Schema options require explicit --schema")
     try:
         arguments = request_arguments(options, parser)
     except (TypeError, ValueError) as error:
@@ -73,13 +71,7 @@ def main(argv=None):
         parser.error(f"tool resource directory does not exist: {root}")
     payload = read(os.environ)
     if payload is not None:
-        if (options.patch or options.profile is not None or options.schema is not None
-                or options.schema_config is not None or options.schema_path is not None
-                or options.schema_doc or options.schema_owner_account is not None
-                or options.schema_owner_limits is not None or options.schema_owner_run_id is not None
-                or options.schema_iterate or options.schema_task is not None or options.schema_out is not None
-                or options.schema_rounds is not None or options.schema_runtime_profile is not None
-                or options.schema_reference or options.schema_objective is not None or options.schema_environment is not None):
+        if options.patch or options.profile is not None or options.schema is not None or schema_options:
             parser.error("cannot override a reconstructed launch selection")
         if options.workflow_request is None:
             parser.error("continuation requires its recorded --workflow-request")
@@ -92,48 +84,19 @@ def main(argv=None):
     except ValueError as error:
         parser.error(str(error))
     if options.schema:
-        if options.schema_iterate:
-            if options.schema_config is not None:
-                parser.error("--schema-iterate and legacy --schema-config are mutually exclusive")
-            if options.schema_task is None or options.schema_out is None:
-                parser.error("--schema-iterate requires --schema-task and --schema-out")
-            try:
-                from aka.workflow.schema.iterations import run as run_iterations
-                return run_iterations(profile, Invocation(arguments), task=options.schema_task,
-                    out=options.schema_out, schema=options.schema_path,
-                    rounds=2 if options.schema_rounds is None else options.schema_rounds,
-                    runtime_profile=options.schema_runtime_profile, references=options.schema_reference,
-                    objective=options.schema_objective, environment=options.schema_environment,
-                    docs=options.schema_doc, owner_account=options.schema_owner_account,
-                    owner_limits=options.schema_owner_limits, owner_run_id=options.schema_owner_run_id,
-                    patch_files=options.patch, variables={"repo_root": str(root)})
-            except (ImportError, ValueError, OSError) as error:
-                parser.error(str(error))
-        if (options.schema_task is not None or options.schema_out is not None or options.schema_rounds is not None
-                or options.schema_runtime_profile is not None or options.schema_reference
-                or options.schema_objective is not None or options.schema_environment is not None):
-            parser.error("automatic writing options require --schema-iterate")
-        if options.schema_path is not None:
-            if options.schema_config is not None:
-                parser.error("--schema-path and legacy --schema-config are mutually exclusive")
-            try:
-                from aka.workflow.schema.standard import run as run_standard_schema
-                return run_standard_schema(profile, Invocation(arguments), schema=options.schema_path,
-                    docs=options.schema_doc, owner_account=options.schema_owner_account,
-                    owner_limits=options.schema_owner_limits, owner_run_id=options.schema_owner_run_id,
-                    patch_files=options.patch, variables={"repo_root": str(root)})
-            except (ImportError, ValueError, OSError) as error:
-                parser.error(str(error))
-        if options.schema_config is None:
-            parser.error("--schema requires --schema-path, --schema-iterate, or legacy --schema-config")
         try:
-            from aka.workflow.schema.launch import run as run_schema
-        except ImportError as error:
-            parser.error("--schema requires the matching optional atrex-aka-schema installation: " + str(error))
-        try:
-            return run_schema(profile, Invocation(arguments), configuration=options.schema_config,
-                              patch_files=options.patch, variables={"repo_root": str(root)})
-        except (ValueError, OSError) as error:
+            from dataclasses import replace
+            from aka.workflow.schema.launch import SchemaConfig, run as run_schema
+            config = SchemaConfig.load(options.schema_config, initial_schema=options.schema_path)
+            if options.schema_continuous is not None:
+                config = replace(config, continuous=options.schema_continuous)
+            if options.schema_limits is not None:
+                if not isinstance(options.schema_limits, dict):
+                    parser.error("--schema-limits requires a JSON object")
+                config = replace(config, limits={**config.limits, **options.schema_limits})
+            return run_schema(profile, Invocation(arguments), configuration=config,
+                patch_files=options.patch, variables={"repo_root": str(root)})
+        except (ImportError, TypeError, ValueError, OSError) as error:
             parser.error(str(error))
     return run_profile(profile, Invocation(arguments),
         patch_files=options.patch, variables={"repo_root": str(root)})

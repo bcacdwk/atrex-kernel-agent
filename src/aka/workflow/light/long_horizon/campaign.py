@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from aka.acceptance import PerformanceScorePolicy
-from aka.contracts.workspace import CandidateHandle
+from aka.contracts.workspace import CandidateHandle, RevisionContent
 from aka.workflow.light.orchestration.hardware import hardware_vendor
 from aka.workflow.light.orchestration.version_records import FACT_FIELDS, version_record_path
 
@@ -404,7 +404,7 @@ def _memory_profile_evidence(
 @dataclass
 class LongHorizonCampaign:
     base_campaign: main_adapter.Campaign
-    max_episodes: int = 8
+    max_episodes: int | None = 8
     max_version: int | None = None
     episode_limit: int = 0
     token_budget: int = 0
@@ -414,6 +414,21 @@ class LongHorizonCampaign:
     session_runner: LongSessionRunner | None = None
     worktree_root: Path | None = None
     candidate_audit: object | None = None
+    episode_context: str = ""
+    episode_seed: RevisionContent | None = None
+    candidate_qualification: object | None = None
+
+    def _episode_inputs(self):
+        if not isinstance(self.episode_context, str):
+            raise TypeError("Episode context must be fixed text")
+        if self.episode_seed is not None and not isinstance(self.episode_seed, RevisionContent):
+            raise TypeError("Episode seed must be complete RevisionContent")
+        if self.candidate_qualification is not None and not callable(self.candidate_qualification):
+            raise TypeError("Candidate qualification must be callable")
+        return {"context_sha256": hashlib.sha256(self.episode_context.encode()).hexdigest(),
+                "qualification_required": self.candidate_qualification is not None,
+                "seed_identity": self.base_campaign.candidate_workspace.source_identity(self.episode_seed)
+                    if self.episode_seed is not None else None}
 
 
     @property
@@ -596,8 +611,15 @@ class LongHorizonCampaign:
         journal_path: Path,
         handoff: EpisodeHandoff,
     ) -> str:
+        diagnosis = self._native_completion_check(worktree, journal_path, handoff)
+        if diagnosis:
+            return diagnosis
         if self.candidate_audit is not None:
             return self.candidate_audit.completion_check(worktree, journal_path, handoff)
+        return ""
+
+    def _native_completion_check(self, worktree, journal_path, handoff) -> str:
+        """Extensions can add gates, but cannot replace native terminal checks."""
         candidate = (
             handoff.candidate_commit if handoff.status == "candidate_ready" else ""
         )
@@ -1055,6 +1077,15 @@ class LongHorizonCampaign:
                 )
         verification: VerificationResult | None = None
         accepted = False
+        if not violation and self.candidate_qualification is not None:
+            qualification = self.candidate_qualification(worktree=worktree,
+                candidate_commit=candidate_commit, active=dict(active))
+            if not isinstance(qualification, dict):
+                raise TypeError("Candidate qualification must return a durable mapping")
+            active["candidate_qualification"] = qualification
+            store.save_active(active)
+            if qualification.get("qualified") is not True:
+                violation = "additional candidate qualification is incomplete"
         if not violation:
             if self.candidate_audit is not None:
                 active["schema_qualification"] = self.candidate_audit.qualify(
@@ -1197,6 +1228,10 @@ class LongHorizonCampaign:
         }
         if capture_error:
             attempt["candidate_output_unavailable"] = capture_error
+        if "episode_inputs" in active:
+            attempt["episode_inputs"] = active["episode_inputs"]
+        if "candidate_qualification" in active:
+            attempt["candidate_qualification"] = active["candidate_qualification"]
         if self.candidate_audit is not None:
             attempt["schema_qualification"] = self.candidate_audit.attempt(active, worktree)
             attempt["schema_operations"] = self.candidate_audit.usage(active, worktree)
@@ -1474,6 +1509,19 @@ class LongHorizonCampaign:
         binding = (candidate_workspace.inspect_candidate(self.workspace, recovery_handle)
                    if recovery_handle is not None else None)
         registered = binding is not None and binding.registered
+        if preserve_preparing and phase == "preparing" and current_revision == base_commit:
+            if recovery_handle is None:
+                raise RuntimeError("Preparing Episode has no recoverable native worktree binding")
+            if not registered:
+                if worktree_path.exists():
+                    raise RuntimeError("Preparing Episode has an unregistered worktree; restore its native owner")
+                # Replay the already persisted plan, never allocate another
+                # branch, Episode number or source selection after a crash.
+                candidate_workspace.materialize(recovery_handle, self.workspace)
+                binding = candidate_workspace.inspect_candidate(self.workspace, recovery_handle)
+                registered = binding.registered
+            if not registered or not worktree_path.is_dir():
+                raise RuntimeError("Preparing Episode worktree is unavailable")
         resumable_worktree = bool(
             current_revision == base_commit
             and phase in {"preparing", "exploring", "verifying", "promoting", "recording"}
@@ -1585,11 +1633,18 @@ class LongHorizonCampaign:
                     "mode": episode_mode,
                     "recovered_after_supervisor_interruption": True,
                 }
+                if "episode_inputs" in active:
+                    recovered_attempt["episode_inputs"] = active["episode_inputs"]
                 if promoted:
+                    if self.candidate_qualification is not None and (
+                            active.get("candidate_qualification") or {}).get("qualified") is not True:
+                        raise RuntimeError("Recovered promotion lacks its additional candidate qualification")
                     state.accepted += 1
                     state.consecutive_without_promotion = 0
                     recovered_attempt["promotion_commit"] = current_revision
                     recovered_attempt["promotion_audit"] = audit_recovery
+                    if "candidate_qualification" in active:
+                        recovered_attempt["candidate_qualification"] = active["candidate_qualification"]
                     if self.candidate_audit is not None:
                         recovered_attempt["schema_qualification"] = schema_recovered
                 else:
@@ -1687,6 +1742,10 @@ class LongHorizonCampaign:
                 "outcome_commit": outcome_commit,
                 "recovered_after_supervisor_interruption": True,
             }
+            if "episode_inputs" in active:
+                attempt["episode_inputs"] = active["episode_inputs"]
+            if "candidate_qualification" in active:
+                attempt["candidate_qualification"] = active["candidate_qualification"]
             if not already_recorded:
                 state.episodes = max(state.episodes, episode)
                 state.interrupted += 1
@@ -1724,14 +1783,52 @@ class LongHorizonCampaign:
         store.clear_active()
         return None
 
+    def stop_episode(self, *, episode: int, reason: str) -> None:
+        """Archive an admission-stopped Episode without model or execution work.
+
+        The controller must first settle the original invocation/Experiment
+        owners. Native source and draft checks prevent stopping a live or
+        already-promoting candidate through this rejection-only boundary.
+        """
+        store = CampaignStore(self.workspace, candidate_workspace=self.base_campaign.candidate_workspace)
+        state, active = store.load_state(), store.load_active()
+        if active is None:
+            if any(item["episode"] == episode for item in state.attempts):
+                return
+            raise RuntimeError("No native Episode exists to stop")
+        if (active.get("episode") != episode or active.get("phase") not in {"exploring", "verifying"}
+                or active.get("episode_inputs") != self._episode_inputs()):
+            raise RuntimeError("Native Episode cannot be stopped at this phase or input binding")
+        owner = self.base_campaign.candidate_workspace
+        if owner.current_revision(self.workspace) != active["base_commit"]:
+            raise RuntimeError("Native incumbent changed; reconcile promotion before stopping")
+        self.base_campaign._supervisor_runtime.read_episode_draft(episode)
+        if any(record.lifecycle != "terminal" for record in self.base_campaign.experiment_records()):
+            raise RuntimeError("Native Experiment owners must settle before stopping")
+        worktree = CandidateHandle(episode, active["base_commit"], active["episode_branch"], Path(active["worktree"]))
+        binding = owner.inspect_candidate(self.workspace, worktree)
+        if not binding.registered or binding.branch != worktree.branch:
+            raise RuntimeError("Native candidate binding is unavailable")
+        used = max(0, state.tokens - sum(max(0, int(item.get("tokens", 0))) for item in state.attempts))
+        self._record_terminal_episode(store, state, active, worktree,
+            memory_version=int(active["memory_version"]), status="budget_stopped", candidate_commit="",
+            violation=reason, paths=[], verification=None, accepted=False,
+            tokens=used, tokens_accounted=True)
+
     def run(self, *, episode: int | None = None, lifecycle=None, prepare_episode=None) -> str:
         """Run the original supervisor, optionally bounded to one exact episode.
 
-        Lifecycle callbacks are private synchronous admission/terminal seams;
+        Lifecycle callbacks are synchronous admission/terminal seams;
         they do not own setup, finish, accounting, or recovery. No optional
-        module is imported by the default path. See workflow/schema/bridge.py.
+        module is imported by the default path.
         """
         target_episode = episode
+        explicit_inputs = bool(self.episode_context) or self.episode_seed is not None or self.candidate_qualification is not None
+        inputs = self._episode_inputs() if explicit_inputs else None
+        if explicit_inputs and episode is None:
+            raise ValueError("Fixed Episode inputs require one explicit Episode number")
+        if self.episode_seed is not None and prepare_episode is not None:
+            raise ValueError("Choose the native seed or an external preparation callback")
         pending = None
         if episode is not None:
             if type(episode) is not int or episode < 1:
@@ -1740,6 +1837,9 @@ class LongHorizonCampaign:
             if pending is not None and pending["episode"] != episode:
                 raise ValueError("A different native episode is active; settle it first")
             previous = next((item for item in checkpoint.attempts if item["episode"] == episode), None)
+            retained = pending if pending is not None else previous
+            if retained is not None and retained.get("episode_inputs") != inputs:
+                raise ValueError("Fixed Episode context/seed differs from its retained binding")
             if previous is not None and pending is None:
                 if lifecycle is not None:
                     lifecycle.settled(episode=episode, workspace=self.workspace, attempt=dict(previous))
@@ -1751,7 +1851,7 @@ class LongHorizonCampaign:
             if pending is None:
                 if self.max_version is not None and max(0, main_adapter.latest_version(self.workspace)) >= self.max_version:
                     return "budget: max-iters"
-                if self.max_version is None and checkpoint.episodes >= self.max_episodes:
+                if self.max_version is None and self.max_episodes is not None and checkpoint.episodes >= self.max_episodes:
                     return "max-episodes"
                 if self.token_budget and checkpoint.tokens >= self.token_budget:
                     return "budget: token-budget"
@@ -1787,7 +1887,7 @@ class LongHorizonCampaign:
                 phase="recover", episode=episode, workspace=self.workspace, active=store.load_active()):
             return "external-admission: recover"
         recovered_episode = self._recover_interrupted(
-            store, state, verifier=verifier, preserve_preparing=prepare_episode is not None,
+            store, state, verifier=verifier, preserve_preparing=prepare_episode is not None or explicit_inputs,
         )
         if episode is not None and state.episodes >= episode and store.load_active() is None:
             attempt = next(item for item in state.attempts if item["episode"] == episode)
@@ -1817,6 +1917,7 @@ class LongHorizonCampaign:
                     break
             elif (
                 self.max_version is None
+                and self.max_episodes is not None
                 and state.episodes >= self.max_episodes
             ):
                 reason = "max-episodes"
@@ -1880,6 +1981,8 @@ class LongHorizonCampaign:
                     "mode": episode_mode,
                     "phase": "preparing",
                 }
+                if inputs is not None:
+                    active["episode_inputs"] = inputs
                 store.save_active(active)
                 self.base_campaign.candidate_workspace.materialize(worktree, self.workspace)
                 self.base_campaign.candidate_workspace.clear_paths(worktree.path, ("scratch",))
@@ -1887,7 +1990,7 @@ class LongHorizonCampaign:
                     {
                         "episode_branch": worktree.branch,
                         "worktree": str(worktree.path),
-                        "phase": "preparing" if prepare_episode is not None else "exploring",
+                        "phase": "preparing" if prepare_episode is not None or self.episode_seed is not None else "exploring",
                     }
                 )
                 store.save_active(active)
@@ -1898,6 +2001,11 @@ class LongHorizonCampaign:
                         "runtime linking dirtied the episode boundary: "
                         + ", ".join(unexpected)
                     )
+            if self.episode_seed is not None and (not resumed or active.get("resumed_from_phase") == "preparing"):
+                self.base_campaign.candidate_workspace.install_source(worktree.path, self.episode_seed)
+                installed = self.base_campaign.candidate_workspace.read_source(worktree.path)
+                if self.base_campaign.candidate_workspace.source_identity(installed) != inputs["seed_identity"]:
+                    raise RuntimeError("Native Episode seed installation changed source identity")
             if prepare_episode is not None and (not resumed or active.get("resumed_from_phase") == "preparing"):
                 # Only a fresh/preparing worktree may receive an external seed.
                 # Keep this durable phase until its owner has finished installing
@@ -1929,6 +2037,13 @@ class LongHorizonCampaign:
                 worktree.path, episode=episode, memory_version=memory_version,
                 base_commit=base_commit, branch=worktree.branch,
             )
+            if explicit_inputs and active.get("phase") == "preparing" and prepare_episode is None:
+                # Registration is part of seed preparation. An interruption
+                # before this point must replay the same seed and draft.
+                if self.episode_seed is not None:
+                    self.base_campaign.candidate_workspace.install_source(agent_workspace, self.episode_seed)
+                active["phase"] = "exploring"
+                store.save_active(active)
             draft_ready = getattr(prepare_episode, "draft_ready", None)
             if callable(draft_ready):
                 draft_ready(worktree=worktree, active=dict(active), draft=agent_workspace)
@@ -1944,6 +2059,8 @@ class LongHorizonCampaign:
                 verifier=verifier,
                 episode_mode=episode_mode,
             )
+            if self.episode_context:
+                prompt += "\n\n" + self.episode_context
             store.write_brief(episode, prompt)
             telemetry_environment = {
                 "ATREX_EPISODE_MODE": episode_mode,
