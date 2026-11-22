@@ -121,6 +121,11 @@ Bounded bad drafts or repeated infrastructure failures leave a diagnostic
 `RecoveryRequired` state. After resolving its specific cause, an embedding
 supervisor may call `SchemaWorkflow.resume_after_repair(reason)` on the same
 controller; this records the repair without refunding consumed allowance.
+For a diagnosed preparation-admission defect in an earlier implementation,
+the explicit `preparation_campaign=campaign` argument first verifies the same
+native context and retained original receipts. Only a provable unaccounted
+execution is recorded once as `historical-unadmitted` consumption; it is not
+relabelled as an original admission. Ambiguous evidence remains blocked.
 
 Resolve a stopped action before invoking that repair method. It permits a new
 bounded attempt after a diagnosed bad draft or infrastructure repair; it does

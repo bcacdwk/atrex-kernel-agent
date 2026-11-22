@@ -23,6 +23,11 @@ class _DispatchScope:
     closed: bool = False
 
 
+@dataclass
+class _DispatchBinding:
+    scope: _DispatchScope | None = None
+
+
 class LegacyExecutor(GatewayRecoveryMixin):
     sandbox_cli_options = True
     sandbox_cli_endpoint_environment = False
@@ -36,7 +41,7 @@ class LegacyExecutor(GatewayRecoveryMixin):
         self.request = request
         self.hooks = hooks
         self.configuration = dict(configuration or {})
-        self._dispatch_scope = None
+        self._dispatch_binding = _DispatchBinding()
         if request is not None and request.ssh:
             self.capabilities = replace(type(self).capabilities, source_archives=True, prepared_inputs=False)
         recovery_policy(self.configuration)
@@ -54,8 +59,14 @@ class LegacyExecutor(GatewayRecoveryMixin):
         elif self.configuration.get("profile"):
             request = replace(request, profile=self.configuration["profile"], url="", ssh="")
         bound = type(self)(request, hooks, configuration=self.configuration)
-        bound._dispatch_scope = self._dispatch_scope
+        # Runtime services can bind before their Campaign installs admission.
+        # Share the attachment, not the scope value observed at binding time.
+        bound._dispatch_binding = self._dispatch_binding
         return bound
+
+    @property
+    def _dispatch_scope(self):
+        return self._dispatch_binding.scope
 
     @contextmanager
     def dispatch_scope(self, *, admit, observe):
@@ -67,12 +78,14 @@ class LegacyExecutor(GatewayRecoveryMixin):
         if self.configuration.get("idempotent_replay") or self.configuration.get("recovery_retry_delays"):
             raise ValueError("Scoped Legacy executor requires replay and automatic recovery retries disabled")
         scope = _DispatchScope(admit, observe)
-        self._dispatch_scope = scope
+        self._dispatch_binding.scope = scope
         try:
             yield self
         finally:
             scope.closed = True
-            self._dispatch_scope = None
+            # Only the owner can start a fresh scope. Every existing bound
+            # reference keeps the closed attachment and cannot escape admission.
+            self._dispatch_binding = _DispatchBinding()
 
     def replay_job(self, command, *, idempotency_key):
         if self._dispatch_scope is not None:

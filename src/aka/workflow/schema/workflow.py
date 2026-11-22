@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import json
 import math
 from pathlib import Path
@@ -147,12 +147,19 @@ def _measurement_feedback(record):
             "gate", "candidate_latency_us", "incumbent_latency_us", "improvement_pct",
             "candidate_performance_score", "incumbent_performance_score")})
         result["evaluation_failed"] = bool(evaluation.error or evaluation.failure)
-        result["measurements"] = [{"method": item.identity.method,
+    # Native command evaluation retains step assessments on the original
+    # attempts; its aggregate verification need not duplicate them. Use Light's
+    # existing terminal, task/identity-matched projection for that case.
+    from aka.workflow.light.measurements import RecordedMeasurements
+    measurements = evaluation.measurements if evaluation is not None else ()
+    if not measurements and record.attempts:
+        measurements = RecordedMeasurements._measurements(record)
+    result["measurements"] = [{"method": item.identity.method,
             "identity_digest": item.identity.digest, "completeness": item.completeness,
             "validity": item.validity, "comparability": item.comparability,
             "environment_identity": item.environment_identity,
             "diagnostics": [{"category": entry.category, "code": entry.code}
-                            for entry in item.diagnostics[:8]]} for item in evaluation.measurements[:8]]
+                            for entry in item.diagnostics[:8]]} for item in measurements[:8]]
     return result
 
 
@@ -345,15 +352,20 @@ class SchemaWorkflow:
             self.state.data["unresolved_experiments"] = list(self._original_pending.values())
             self.state.save()
 
-    def run(self, campaign):
-        self._campaign = campaign
+    def _bind_recovery(self, campaign):
         runtime = getattr(campaign, "tool_runtime", None)
         native_workflow = getattr(runtime, "workflow", None)
         if native_workflow is not None:
+            if native_workflow.executor is not self.executor:
+                raise ValueError("Controller Executor differs from the selected native execution owner")
             # Recovery uses the same native ExecutionContext (including its
             # privately supplied transport credentials), never a fresh route
             # guessed from the controller process environment.
             self._recovery_executor = self.executor.bind(native_workflow.execution_context)
+
+    def run(self, campaign):
+        self._campaign = campaign
+        self._bind_recovery(campaign)
         state = self.state
         with state.owned():
             if state.data["phase"] == "finished":
@@ -423,6 +435,7 @@ class SchemaWorkflow:
         data = self.state.data
         if data["prepared"] is not None:
             self._check_prepared(campaign)
+            self._refresh_preparation_measurements(campaign)
             return
         self.state.action("prepare")
         public, snapshot = self._retry(lambda: campaign.prepare_native())
@@ -447,11 +460,12 @@ class SchemaWorkflow:
                 raise ValueError("Existing SOTA kernel/Schema must match the prepared Task, actual source and target device")
         data["prepared"] = {"identity": snapshot.identity, "directory": str(snapshot.directory),
             "public_task": text, "public_digest": digest(text), "hardware": campaign.sandbox_hardware,
-            "native_policy": self._native_policy(campaign)}
+            "native_policy": self._native_policy(campaign), "source_identity": source_ref["identity"]}
         data["champion"] = source_ref
         data["working_draft"] = source_ref
         data["seen_records"] = [_record_key(record) for record in records]
-        data["preparation_measurements"] = [_measurement_feedback(record) for record in records[-8:]]
+        data["preparation_measurements"] = self._preparation_feedback(campaign, records[-8:],
+            prepared_id=snapshot.identity, source_identity=source_ref["identity"])
         if self.initial is not None:
             data["design"], data["design_version"] = initial.design.as_dict(), artifact.manifest["version"]
             hypothesis = "initial:" + artifact.manifest["closure_digest"]
@@ -462,6 +476,117 @@ class SchemaWorkflow:
             data["phase"] = "extract" if self.sota is not None else "design"
         data["action"] = None
         self.state.save()
+
+    @staticmethod
+    def _preparation_feedback(campaign, records, *, prepared_id, source_identity):
+        summaries = []
+        for record in records:
+            measurement = _measurement_feedback(record)
+            identities = sorted({campaign.candidate_workspace.source_identity(campaign.experiment_source(artifact))
+                for artifact in record.artifacts if artifact.role == "candidate-source"})
+            measurement.update(candidate_source_identities=identities, prepared_id=prepared_id,
+                prepared_source_match=identities == [source_identity])
+            summaries.append(measurement)
+        return summaries
+
+    def _refresh_preparation_measurements(self, campaign):
+        """Reproject only retained preparation owners; never dispatch or alter usage.
+
+        Old roots may lack the step summaries. Their original seed is retained
+        by source role, independently of the current champion or later trials.
+        A frozen Planner request remains unchanged until its operation settles.
+        """
+        data = self.state.data
+        previous = data.get("preparation_measurements", [])
+        if not previous:
+            return
+        prepared = data["prepared"]
+        source_identity = prepared.get("source_identity")
+        if source_identity is None:
+            refs = [data["champion"], data["working_draft"],
+                *(hypothesis["seed"] for hypothesis in data["hypotheses"].values())]
+            seeds = {ref["identity"]: ref for ref in refs if ref is not None
+                and ref["origin"].get("role") == "prepared-seed"}
+            if len(seeds) != 1:
+                raise RecoveryRequired("Original preparation source identity is unavailable")
+            seed, = seeds.values()
+            self.state.read_source(seed, owner=campaign.candidate_workspace)
+            source_identity = seed["identity"]
+        selected = self._preparation_records(campaign)
+        if self._preparation_dispatch_gaps(selected):
+            raise RecoveryRequired("Original preparation dispatched without admission; explicit historical usage repair is required")
+        summaries = self._preparation_feedback(campaign, selected,
+            prepared_id=prepared["identity"], source_identity=source_identity)
+        if summaries != previous or "source_identity" not in prepared:
+            prepared["source_identity"] = source_identity
+            data["preparation_measurements"] = summaries
+            self.state.save()
+
+    def _preparation_records(self, campaign):
+        if str(campaign.workspace.absolute()) != self.state.config["workspace"]:
+            raise RecoveryRequired("Preparation recovery belongs to another native workspace")
+        records = {_record_key(record): record for record in campaign.experiment_records()}
+        try:
+            selected = [records[digest(row["experiment"])]
+                for row in self.state.data.get("preparation_measurements", [])]
+        except KeyError as error:
+            raise RecoveryRequired("An original preparation Experiment record disappeared") from error
+        self._require_records_settled(selected)
+        return selected
+
+    def _preparation_dispatch_gaps(self, records):
+        """Match original dispatch receipts, refusing to infer missing launches."""
+        data = self.state.data
+        corrections = data.get("preparation_dispatch_corrections", {})
+        gaps = {}
+        for record in records:
+            for attempt in record.attempts:
+                result = attempt.result
+                jobs = [asdict(reference) for reference in result.job_references] if result is not None else []
+                owners = [call for call in data["calls"].values() if call["kind"] == "execution"
+                    and jobs and jobs == call["job_references"]]
+                if owners:
+                    if (len(owners) != 1 or any(row["evidence"]["job_reference"] in jobs
+                                               for row in corrections.values())):
+                        raise RecoveryRequired("Original preparation dispatch has ambiguous admission ownership")
+                    continue
+                if (attempt.disposition != "terminal" or result is None
+                        or result.facts.disposition != "terminal" or not result.facts.local_stopped
+                        or len(result.attempts) != 1 or len(result.job_references) != 1):
+                    raise RecoveryRequired("Original preparation dispatch count is unknown; inspect its original owner")
+                physical, = result.attempts
+                reference, = result.job_references
+                if (physical.disposition != "terminal" or not physical.attempt_id
+                        or physical.resource is None or physical.resource.backend != reference.backend
+                        or physical.resource.identifier != reference.identifier or physical.operation != reference.operation):
+                    raise RecoveryRequired("Original preparation dispatch identity is unknown; inspect its original owner")
+                job = asdict(reference)
+                key = digest({"job": job, "physical_attempt": physical.attempt_id})
+                proof = {"experiment": _record_ref(record), "attempt_id": attempt.attempt_id,
+                    "task_id": attempt.task_id, "physical_attempt_id": physical.attempt_id, "job_reference": job}
+                if key in corrections:
+                    if corrections[key]["evidence"] != proof:
+                        raise RecoveryRequired("Historical preparation dispatch evidence changed")
+                else:
+                    if key in gaps and gaps[key] != proof:
+                        raise RecoveryRequired("Original preparation dispatch has ambiguous Experiment ownership")
+                    gaps[key] = proof
+        return gaps
+
+    def _repair_preparation_dispatches(self, campaign, reason):
+        self._check_prepared(campaign)
+        gaps = self._preparation_dispatch_gaps(self._preparation_records(campaign))
+        data = self.state.data
+        for key, proof in gaps.items():
+            data.setdefault("preparation_dispatch_corrections", {})[key] = {
+                "kind": "historical-unadmitted", "evidence": proof, "reason": reason,
+                "cause": "legacy-scope-bound-before-installation",
+                "previous_dispatches": data["counts"]["dispatches"], "consumed_dispatches": 1}
+            # This records an evidenced historical consumption, not a fabricated
+            # admission. It can exceed a finite limit; future admission must stop.
+            data["counts"]["dispatches"] += 1
+        if gaps:
+            self.state.save()
 
     def _check_prepared(self, campaign):
         prepared = self.state.data["prepared"]
@@ -860,15 +985,27 @@ class SchemaWorkflow:
         self.state.save()
         return result
 
-    def resume_after_repair(self, reason):
-        """Record an explicit supervisor repair; never reset consumed allowance."""
+    def resume_after_repair(self, reason, *, preparation_campaign=None):
+        """Record explicit repair without refunding usage or inventing admission.
+
+        Supplying the original preparation Campaign explicitly requests a
+        historical consumption correction from its retained dispatch receipts.
+        """
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("A concrete repair diagnosis is required")
+        if preparation_campaign is not None:
+            self._bind_recovery(preparation_campaign)
         with self.state.owned():
+            if preparation_campaign is not None:
+                self._check_prepared(preparation_campaign)
+                if str(preparation_campaign.workspace.absolute()) != self.state.config["workspace"]:
+                    raise RecoveryRequired("Preparation recovery belongs to another native workspace")
             self.state.reconcile(self._recovery_executor, recover_agent=self.recover_agent)
             data = self.state.data
             if data["phase"] == "finished":
                 raise ValueError("A completed finite root cannot be renewed")
+            if preparation_campaign is not None:
+                self._repair_preparation_dispatches(preparation_campaign, reason)
             data["infrastructure_failures"] = 0
             data["infrastructure_exhausted"] = False
             data["planner_failures"] = 0
