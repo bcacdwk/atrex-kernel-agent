@@ -159,9 +159,9 @@ class LegacyExecutor(GatewayRecoveryMixin):
             on_observation=observed if command.on_observation is not None else None,
             input_files=command.input_files, output_options=command.output_options, profile_options=command.profile_options)
         request = replace(request, prepared_inputs=command.prepared_inputs)
-        if request.ssh and command.submission is not None:
+        if command.submission is not None:
             from aka.execution.gateway.source_archives import prepared_payload
-            request = replace(request, submission=prepared_payload(command, ssh=True))
+            request = replace(request, submission=prepared_payload(command, ssh=bool(request.ssh)))
         if command.requirements:
             import json
             request = replace(request, environment={**request.environment,

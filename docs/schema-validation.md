@@ -79,3 +79,4 @@
 - 新旧成功/失败请求的任务参数、硬件、超时、依赖、网关设置及执行器版本已核对；仅等内容 requirements 路径及线程/工具标识变化。服务列表暂未找到对应请求，不能据此把 unknown 改成未提交。
 - 发现 SDK 在提交副本中生成幂等 key，而原生 inline Eval 没有持久保留。修复仅针对 recorded prepared Eval/run/ABBA：执行前用现有不可变 artifact 保存 key 与原请求、超时、环境绑定，并通过 SDK 既有 raw submit 传递。14项故障和67项既有 CPU 回归通过；旧未知尝试不能补造 key，也没有新增自动重发。发行包验证和实测仍待完成。
 - 一次子代理诊断误输出含签名依赖地址的嵌套字段，已停止该输出方式并告知用户；后续只输出明确的叶子字段、哈希及等值结果，原值未入库。
+- `64866b3` 独立发行检查发现真实 V0 链还有漏接：Legacy 非 SSH 分支未将已持久化 key 注入 launcher payload。仅扩展既有 prepared_payload 接线并新增完整 V0→launcher→SDK raw submit 回归；源码82项、独立非 editable 安装83项通过，均0 skipped。原失败安装用例也原样通过，798文件在 source/sdist/wheel/installed 间一致，无真实网络调用。共享运行环境仍为 f205518，旧503状态未改。

@@ -157,6 +157,94 @@ def test_native_v0_prebound_runtime_is_admitted_once_and_feedback_is_bound(tmp_p
         runtime.close()
 
 
+def test_native_v0_retained_key_reaches_launcher_and_sdk(tmp_path, monkeypatch):
+    from contextlib import redirect_stderr, redirect_stdout
+    import hashlib
+    import io
+    import subprocess
+    from atrex_gateway_client import Client, cli
+    from aka.execution import outcomes
+    from aka.execution.gateway import requests, sandbox, submission
+
+    campaign, driver, _, launches = native_launcher(tmp_path, monkeypatch)
+    runtime = campaign._supervisor_runtime
+    original_run_owned = outcomes.run_owned
+    client = Client("https://cpu.invalid", timeout=1, transport_retries=0)
+    inspected, wire_keys = [], []
+
+    def digest(value):
+        return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+    def retained():
+        # Reopen the owner's records at each boundary, before any fake POST.
+        with runtime._record_reader() as reader:
+            record, = reader.iter_records()
+            artifact, = [item for item in record.artifacts if item.role == "submission_intent"]
+            binding = json.loads(reader.read_artifact(artifact))
+            original, = [item for item in record.artifacts if item.sha256 == binding["submission_sha256"]]
+            raw = reader.read_artifact(original)
+        assert hashlib.sha256(raw).hexdigest() == binding["submission_sha256"]
+        assert binding["attempt_id"] == record.attempts[0].attempt_id
+        assert binding["operation"] == "run"
+        assert binding["idempotency_key"].startswith("experiment:")
+        return binding, json.loads(raw)
+
+    def post(method, path, data, *args, **kwargs):
+        assert (method, path) == ("POST", "/v1/jobs/eval")
+        binding, prepared = retained()
+        payload = json.loads(data)
+        assert payload["idempotency_key"] == binding["idempotency_key"]
+        expected = {**prepared["request"], "idempotency_key": binding["idempotency_key"]}
+        expected["options"] = {**expected["options"], "timeout_s": binding["timeout"]}
+        assert digest(payload) == digest(expected)
+        wire_keys.append(payload["idempotency_key"])
+        return 200, {"job_id": "cpu-original-job", "status": "queued", "kind": "eval"}
+
+    def run_cli(argv, **kwargs):
+        assert argv[1] == "submit" and argv[-1] == "--no-wait"
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr), pytest.raises(SystemExit) as stopped:
+            cli.main(argv[1:])
+        return subprocess.CompletedProcess(argv, stopped.value.code, stdout.getvalue(), stderr.getvalue())
+
+    def inspect_launch(*args, **kwargs):
+        binding, prepared = retained()
+        payload = json.loads(kwargs["input_payload"])
+        key = payload["request"].get("idempotency_key")
+        assert key == binding["idempotency_key"], {"retained_key": binding["idempotency_key"], "launcher_key": key}
+        prepared["request"]["idempotency_key"] = key
+        assert digest(payload) == digest(prepared)
+        inspected.append(key)
+        # Exercise the actual submission/SDK adapter with these exact launch
+        # bytes. Only HTTP and the external CLI process are CPU substitutes.
+        with monkeypatch.context() as transport:
+            transport.setattr(cli, "_client", lambda args: client)
+            transport.setattr(cli._update, "maybe_warn_outdated", lambda version: None)
+            transport.setattr(client, "_request_once", post)
+            transport.setattr(sandbox, "_find_agate", lambda: "/cpu/agate")
+            transport.setattr(sandbox, "_submission_route", lambda *args: ("https://cpu.invalid", ""))
+            transport.setattr(sandbox.subprocess, "run", run_cli)
+            transport.setattr(sandbox, "_resume_interrupted_agate_wait", lambda **kwargs:
+                subprocess.CompletedProcess((), 0, json.dumps({"job_id": "cpu-original-job",
+                    "status": "succeeded", "result": {}}), ""))
+            for module in (outcomes, sandbox, submission, requests):
+                transport.setattr(module, "emit_fact", lambda value: None)
+            options = SimpleNamespace(kind="run", url="https://cpu.invalid", gateway_profile=None,
+                ssh=False, input=[], timeout=binding["timeout"])
+            assert submission.submit_prepared(options, kwargs["workspace"], 0, payload) == 0
+        return original_run_owned(*args, **kwargs)
+
+    monkeypatch.setattr(outcomes, "run_owned", inspect_launch)
+    try:
+        with driver.state.owned(), ExitStack() as stack:
+            driver._scopes(stack, campaign)
+            driver._prepare(campaign)
+        assert inspected == wire_keys
+        assert len(inspected) == len(launches) == driver.state.data["counts"]["dispatches"] == 1
+    finally:
+        runtime.close()
+
+
 def test_scope_owner_reopens_without_reviving_old_bindings(tmp_path, monkeypatch):
     campaign, driver, _, launches = native_launcher(tmp_path, monkeypatch)
     executor = driver.executor
