@@ -171,6 +171,44 @@ def _settled(record):
     return all(item.disposition in {"terminal", "not_submitted"} for item in record.attempts)
 
 
+def _dev_unsettled(attempt):
+    """Control-plane terminality is not clearance for a replacement Dev."""
+    result = attempt.result
+    if result is not None and (result.facts.disposition == "not_submitted"
+                               or result.facts.remote_terminated is True):
+        return False
+    if attempt.disposition in {"intent", "unknown"}:
+        return True
+    if result is None:
+        return False
+    if result.facts.disposition == "terminal" and "confirmed-job-query" in result.facts.basis:
+        # Recovery retains earlier unknown receipts. Only the current original
+        # Job query's explicit stop can clear those historical policy values.
+        for item in reversed(result.diagnostics):
+            if item.category == "recovery" and item.code == "gateway-policy":
+                try:
+                    policy = json.loads(item.details["payload"])
+                except (KeyError, TypeError, ValueError):
+                    return True
+                if isinstance(policy, dict) and policy.get("execution_state") == "stopped":
+                    return False
+                break
+    def ambiguous(cause):
+        return cause.code == "dev_submission_ambiguous" or any(ambiguous(item) for item in cause.causes)
+    for receipt in (result, *result.attempts):
+        if any(ambiguous(cause) for cause in receipt.causes):
+            return True
+        for item in receipt.diagnostics:
+            if item.category == "recovery" and item.code == "gateway-policy":
+                try:
+                    policy = json.loads(item.details["payload"])
+                except (KeyError, TypeError, ValueError):
+                    return True
+                if not isinstance(policy, dict) or policy.get("execution_state") == "unknown":
+                    return True
+    return False
+
+
 class FileExperimentRecords:
     """Single-host records. Writers hold a request lock for the whole operation.
 
@@ -303,20 +341,39 @@ class FileExperimentRecords:
         return read_source(self, artifact)
 
     @contextmanager
-    def operation(self, request_id):
-        ref = self._ref(request_id)
+    def _operation_lock(self, key, ref, code="experiment_busy"):
         locks = self.root / "locks"
         locks.mkdir(mode=0o700, exist_ok=True)
-        path = locks / ref.experiment_id
+        path = locks / key
         fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         try:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                raise ExperimentRecordError("experiment_busy", ref) from None
-            yield ref
+                raise ExperimentRecordError(code, ref) from None
+            yield
         finally:
             os.close(fd)
+
+    @contextmanager
+    def operation(self, request_id, *, dev_request=None):
+        ref = self._ref(request_id)
+        with self._operation_lock(ref.experiment_id, ref):
+            if dev_request is None:
+                yield ref
+            else:
+                # Keep equivalent requests exclusive across IDs and processes,
+                # including recovery. Different measurements use other locks.
+                with self._operation_lock("dev-" + _digest(dev_request), None, "dev_request_busy"):
+                    yield ref
+
+    def require_dev_clearance(self, request_digest):
+        # Read the original records, including archived terminal failures. No
+        # second ledger or inferred clearance from a newly chosen request ID.
+        for record in self.iter_records():
+            if (record.kind == "command" and record.request_digest == request_digest
+                    and any(_dev_unsettled(attempt) for attempt in record.attempts)):
+                raise ExperimentRecordError("dev_replacement_unresolved", record.ref)
 
     def _save(self, record):
         value = record.as_dict()
@@ -328,7 +385,7 @@ class FileExperimentRecords:
             raise ExperimentRecordError("storage_unavailable", record.ref) from error
         return record
 
-    def register(self, ref, request_id, request, *, kind, purpose):
+    def register(self, ref, request_id, request, *, kind, purpose, dev=False):
         with self._write_lock:
             try:
                 old = self.get(ref)
@@ -339,6 +396,8 @@ class FileExperimentRecords:
                 if old.request_digest != digest or old.kind != kind or old.purpose != purpose:
                     raise ExperimentRecordError("request_conflict", ref)
                 return old, False
+            if dev:
+                self.require_dev_clearance(digest)
             now = _now()
             record = ExperimentRecord(ref, request_id, kind, purpose, 1, "registered", "prepare",
                                       request, digest, created_at=now, updated_at=now)

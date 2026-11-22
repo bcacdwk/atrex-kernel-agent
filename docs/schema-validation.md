@@ -1,6 +1,6 @@
 # Schema 实施与运行验证记录
 
-当前阶段：五轮实现及清理已提交，并持续修复真实实验问题。独立运行的两条 V0 已通过；vector 已完成新设计、实现、独立资格审查与正式晋升，并自动进入下一实现 Episode。GEMM 初版设计连续 thinking-only 截断，已保留消费并停止该调用，正在准备规划改进的后继。尚未完整验证两条持续 D/E 链或多日稳定性。
+当前阶段：五轮实现及清理已提交，并持续修复真实实验问题。两条 V0 已通过；vector 已完成新设计、实现、独立资格审查与正式晋升，并继续实现迭代。GEMM 已修复 writer 参数冲突，从原任务恢复并收到真实 Qwen 工具响应，尚待初版 Schema 发布。两条持续 D/E 链及多日稳定性仍未完整验证。
 
 ## 正式目标
 
@@ -106,3 +106,6 @@
 - 协议修复仅在writer固定预算模式对当前模型追加 -effort，保持非零budget/model/输出上限，其他角色/default不变；mode=fixed_budget_without_effort进入新intent及writer capture。181项CPU、19个完整原CLI参数的隔离场景和7个旧冲突门通过；真实provider尚待验证。单独省略CLI effort参数仍会继承用户effort，故不能替代此明确模式。
 - vector继续同design v2四Episode窗口：Episode2新CCC候选完整Eval通过，但pivot/source-not-qualified，未晋升；Episode3仍实现中。冻结hardware.md仅声明L20D，root/dispatch明确微架构未知；实际sm_103/(10,3)为新增观察，无与冻结其他SM/架构冲突。
 - Dev19→20出现完整相同冻结request/digest、不同request_id的新提交，原Dev physical unknown且replay_allowed=false；replacement效果审查为明确待核。另Eval22新候选被HTTP400 invalid_source拒绝，原cause为Forbidden name: getattr，但实际Coder反馈丢失此可修诊断、candidate_repairable=false。两问题已保留原证据，未通过修改状态掩盖，待单独修复。
+- `65d427c` 四包及独立安装验证通过：181项相关检查、19项实际CLI离线场景、7项旧冲突反例和799文件闭包一致。22:43 UTC GEMM使用独立安装从原root恢复至新操作a6，原V0、历史调用与消费保留；实际请求enabled/8192、max32000且无effort。22:44 UTC真实Qwen返回tool_use，首批5个Read均成功，无原参数冲突；这证明provider接受与工具可用，尚不证明设计发布或完整循环。
+- 源策略反馈修复仅改已有分类边界：明确候选源的标准SDK拒绝进入可修复反馈，未知细节使用固定提示；reference/env/混合归属不误判，不回显私有原文。相关111项CPU检查通过，原Eval22只读投影现给出`Forbidden name: getattr`，仍为未提交、无GPU数值，原记录和receipt摘要不变；运行安装尚未更新。
+- Dev相同完整冻结请求现在复用非阻塞文件锁，并在登记/新派发前检查原持久记录；未决替换返回有限Coder反馈，独立Eval仍可继续。旧版实际接线反例会派发两次，新版只派发一次且保留原记录与消费。相关109项CPU检查、目标挂载跨进程锁及真实Dev19只读检查通过。独审发现并修复了同原Job已明确停止后仍被历史unknown误封的问题；最终17项Dev回归通过。保护限于相同namespace/完整摘要，不声称识别改动输入后的所有语义重复；尚未部署到live运行。

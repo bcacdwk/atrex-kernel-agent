@@ -209,9 +209,12 @@ class LegacyExperiment:
             raise TypeError("recorded experiment requires EvaluationRequest or CommandSpec")
         if isinstance(request, EvaluationRequest) and self.evaluator is None:
             raise ValueError("evaluation requires an injected Evaluator")
-        with records.operation(request_id) as ref:
-            record, created = records.register(ref, request_id, self._request_data(request),
-                kind="command" if isinstance(request, CommandSpec) else "evaluation", purpose=self.purpose)
+        from aka.execution.command_syntax import requested_operation
+        dev = isinstance(request, CommandSpec) and requested_operation(request.operation, list(request.command)) == "dev"
+        request_data = self._request_data(request)
+        with records.operation(request_id, dev_request=request_data if dev else None) as ref:
+            record, created = records.register(ref, request_id, request_data,
+                kind="command" if isinstance(request, CommandSpec) else "evaluation", purpose=self.purpose, dev=dev)
             if not created:
                 if record.phase == "complete" and record.outcome is not None and record.lifecycle == "terminal":
                     evaluator = self.command_evaluator if isinstance(request, CommandSpec) else self.evaluator
@@ -220,6 +223,10 @@ class LegacyExperiment:
                         () if isinstance(request, CommandSpec) else prepared.inputs,
                         prepared.measurement_identities, resume=True, step_budgets=prepared.step_budgets)
                     return record, None
+                if dev and resume is not None and record.lifecycle == "terminal":
+                    # Do not reopen an archived physical unknown just to fail
+                    # its already forbidden replay again.
+                    records.require_dev_clearance(record.request_digest)
                 if resume is None:
                     raise ExperimentRecordError("experiment_incomplete", ref)
                 if not record.plan_digest:
@@ -442,6 +449,11 @@ class LegacyExperiment:
             if cancel.is_set():
                 from concurrent.futures import CancelledError
                 raise CancelledError("experiment batch cancelled before submission")
+            if resume is not None:
+                from aka.execution.command_syntax import requested_operation
+                retained = records.get(ref)
+                if requested_operation(retained.request["operation"], retained.request["argv"]) == "dev":
+                    records.require_dev_clearance(retained.request_digest)
             attempt_id = records.intent(ref, index) if records is not None else None
             try:
                 capabilities = getattr(self.executor, "capabilities", None)

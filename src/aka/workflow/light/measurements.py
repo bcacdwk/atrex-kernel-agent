@@ -253,7 +253,23 @@ class SharedMeasurements(RecordedMeasurements):
         with self.factory.open(workspace=self.namespace_workspace, purpose="development", executor=bound_executor(self.executor),
                                evaluator=self.evaluator, evaluation_input=self.evaluation_input,
                                command_evaluator=self.command_evaluator) as experiment:
-            yield experiment
+            try:
+                yield experiment
+            except ExperimentRecordError as error:
+                from .host.errors import AgentRequestError
+                if error.code == "dev_replacement_unresolved":
+                    raise AgentRequestError(
+                        "An identical Dev request has an unresolved physical outcome. No replacement was submitted.",
+                        code=error.code, repairable=False,
+                        gateway_record_id="gateway-" + error.ref.experiment_id,
+                        next_action="Read the original record. Do not resubmit it with a new request_id. "
+                            "The operator must verify its outcome and external effects before replacement. "
+                            "Continue an independent measurement, or report the blocker and pivot this episode.") from error
+                if error.code == "dev_request_busy":
+                    raise AgentRequestError("An identical Dev request is active. No replacement was submitted.",
+                        code=error.code, next_action="Wait for the original response before deciding what to do next. "
+                            "Independent measurements may continue.") from error
+                raise
 
     def numerical(self, request, *, request_id):
         """Run or resume the original public numerical experiment, then read its verdict."""
