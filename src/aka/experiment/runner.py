@@ -401,6 +401,11 @@ class LegacyExperiment:
                     records.publish_content(ref, command.submission, "evaluation_input")
                 records.publish_content(ref, json.dumps(binding, sort_keys=True,
                     separators=(",", ":"), allow_nan=False).encode(), "submission_intent")
+                # This one-use live authority is never reconstructed from an old
+                # artifact or unknown attempt after restart.
+                from aka.execution.live_eval import RecordedEval
+                observe._live_eval_owner = RecordedEval(binding,
+                    lambda content, role: records.publish_content(ref, content, role))
         return replace(command, on_observation=observe, idempotency_key=key)
 
     def _run_command(self, command, *, records=None, ref=None, resume=None):

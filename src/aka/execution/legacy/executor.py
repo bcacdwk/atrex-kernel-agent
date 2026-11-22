@@ -75,8 +75,8 @@ class LegacyExecutor(GatewayRecoveryMixin):
             raise TypeError("dispatch callbacks must be callable")
         if self._dispatch_scope is not None:
             raise RuntimeError("Legacy executor already belongs to a dispatch scope")
-        if self.configuration.get("idempotent_replay") or self.configuration.get("recovery_retry_delays"):
-            raise ValueError("Scoped Legacy executor requires replay and automatic recovery retries disabled")
+        if self.configuration.get("recovery_retry_delays"):
+            raise ValueError("Scoped Legacy executor requires generic automatic recovery retries disabled")
         scope = _DispatchScope(admit, observe)
         self._dispatch_binding.scope = scope
         try:
@@ -177,19 +177,63 @@ class LegacyExecutor(GatewayRecoveryMixin):
             environment["AKA_GATEWAY_RECOVERY_RETRY_DELAYS"] = json.dumps(self.configuration.get("recovery_retry_delays", []))
             environment["AKA_GATEWAY_RECOVERY_RETRY_BUDGET_S"] = str(self.configuration.get("recovery_retry_budget_s", 0))
             request = replace(request, environment=environment)
+        live = None
+        owner = getattr(command.on_observation, "_live_eval_owner", None)
+        if (self._dispatch_scope is not None and self.configuration.get("idempotent_replay")
+                and owner is not None and command.operation in {"run", "same_allocation_abba"}
+                and not command.source_archives and not request.ssh):
+            from copy import deepcopy
+            from aka.execution.configuration import client_wait_timeout
+            from aka.execution.live_eval import LiveEval, LIVE_ENV, encoded
+            if not self.configuration.get("url") or self.configuration.get("url") != transport.endpoint:
+                raise ValueError("live Eval requires a verified explicit gateway URL")
+            configuration = deepcopy(self.configuration)
+            original_request = self.request
+            original_environment = dict(self.request.environment)
+            selected = (transport.endpoint, transport.profile, dict(transport.environment))
+            arguments = current_transport_arguments()
+            def unchanged():
+                return (self.configuration == configuration and self.request is original_request
+                    and dict(self.request.environment) == original_environment
+                    and (transport.endpoint, transport.profile, dict(transport.environment)) == selected
+                    and current_transport_arguments() == arguments)
+            wait_timeout = request.wall_timeout
+            if wait_timeout is None:
+                wait_timeout = client_wait_timeout(request.timeout, self.hooks.queue_wait_grace(request.environment))
+            live = LiveEval(owner, command, request, self._dispatch_scope, transport,
+                wait_timeout=wait_timeout, unchanged=unchanged)
+            request = replace(request, url=transport.endpoint, profile="", cancel_event=live.cancel_event)
         try:
-            result = self._run_sandbox(request, hooks=self.hooks, dispatch_command=command)
+            while True:
+                remaining = live.remaining() if live is not None else None
+                physical = request
+                if live is not None:
+                    physical = replace(request, wall_timeout=None if remaining == float("inf") else remaining,
+                        environment={**request.environment, LIVE_ENV: encoded(live.launch_binding()).decode()})
+                result = self._run_sandbox(physical, hooks=self.hooks, dispatch_command=command, continuation=live)
+                if live is None or not live.retry(live.completed[-1]):
+                    break
         except BaseException as error:
+            if live is not None and live.latest is not None:
+                # Includes the current physical receipt even if its archive or
+                # final observer failed; never regress to a previous no-JobRef snapshot.
+                error.execution_outcome = live.latest
+                if live.command.cancel_event is not None and live.command.cancel_event.is_set():
+                    error.execution_outcome = replace(live.latest,
+                        facts=replace(live.latest.facts, cancellation_requested=True))
             if isinstance(getattr(error, "execution_outcome", None), JobResult):
                 error.execution_outcome = replace(error.execution_outcome,
                     environment_snapshot=support.environment,
                     environment_identity=support.environment.identity, environment_support=support)
             raise
+        finally:
+            if live is not None:
+                live.active = False
         return replace(result, environment_snapshot=support.environment,
                        environment_identity=support.environment.identity, environment_support=support)
 
     def _run_sandbox(self, request: SandboxRequest, *, hooks: ExecutionHooks,
-                     dispatch_command: CommandSpec | None = None) -> JobResult:
+                     dispatch_command: CommandSpec | None = None, continuation=None) -> JobResult:
         workspace = request.workspace
         hardware = request.hardware
         profile = request.profile
@@ -267,21 +311,36 @@ class LegacyExecutor(GatewayRecoveryMixin):
             try:
                 permit = scope.admit(command=dispatch_command or CommandSpec(
                     workspace, tuple(command), environment=request.environment, hardware=hardware,
-                    timeout=timeout, operation=gateway_kind, submission=request.submission))
+                    timeout=timeout, operation=gateway_kind, submission=request.submission),
+                    **({"continuation": continuation} if continuation is not None else {}))
             except BaseException as error:
                 from aka.execution.outcomes import local_rejection
                 error.execution_outcome = local_rejection(self.resource_identity, hardware, "dispatch-not-admitted")
                 raise
         def decorate(result):
+            if continuation is not None and effective_timeout is not None:
+                from aka.execution.gateway.jobs import client_wait_budget
+                budgets, diagnostics = client_wait_budget("local-wait", effective_timeout, effective_timeout)
+                return replace(result, budgets=(*result.budgets, *budgets),
+                    diagnostics=(*result.diagnostics, *diagnostics))
             return replace(result, budgets=(*result.budgets,
                 *wait_budget_records(effective_timeout, scope="local-wait", emit=False)))
         def observed(result):
+            if continuation is not None:
+                result = continuation.project(result)
             # The original Experiment owner persists its facts before the root.
             if request.on_observation is not None:
                 request.on_observation(result)
             if scope is not None:
-                scope.observe(permit, event="observation", value=decorate(result))
+                scope.observe(permit, event="observation", value=decorate(result),
+                    **({"continuation": continuation} if continuation is not None else {}))
         try:
+            if continuation is not None:
+                from aka.execution.live_eval import LIVE_ENV, encoded
+                continuation.validate()
+                remaining = continuation.remaining()
+                effective_timeout = None if remaining == float("inf") else remaining
+                environment[LIVE_ENV] = encoded(continuation.launch_binding()).decode()
             result = run_owned(cmd, environment=environment, workspace=workspace,
                 timeout=effective_timeout, resource=self.resource_identity, hardware=hardware,
                 cancel_event=cancel_event, spawn=hooks.spawn, check_environment=hooks.check_environment,
@@ -291,10 +350,26 @@ class LegacyExecutor(GatewayRecoveryMixin):
         except BaseException as error:
             if isinstance(getattr(error, "execution_outcome", None), JobResult):
                 error.execution_outcome = decorate(error.execution_outcome)
+                if continuation is not None:
+                    error.execution_outcome = continuation.finish(error.execution_outcome)
+                    if request.on_observation is not None:
+                        request.on_observation(error.execution_outcome)
             if scope is not None:
-                scope.observe(permit, event="error", value=error)
+                scope.observe(permit, event="error", value=error,
+                    **({"continuation": continuation} if continuation is not None else {}))
             raise
         result = decorate(result)
+        if continuation is not None:
+            try:
+                result = continuation.finish(result)
+                if request.on_observation is not None:
+                    request.on_observation(result)
+            except BaseException as error:
+                error.execution_outcome = continuation.latest or result
+                if scope is not None:
+                    scope.observe(permit, event="error", value=error, continuation=continuation)
+                raise
         if scope is not None:
-            scope.observe(permit, event="result", value=result)
+            scope.observe(permit, event="result", value=result,
+                **({"continuation": continuation} if continuation is not None else {}))
         return result

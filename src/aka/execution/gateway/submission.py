@@ -63,7 +63,21 @@ def submit_prepared(args, workspace, grace, prepared):
     validate_archives(prepared, archives, args.kind)
     executable = transport._find_agate()
     try:
-        if archives:
+        from aka.execution.live_eval import LIVE_ENV
+        if os.environ.get(LIVE_ENV):
+            from aka.execution.live_eval import sdk_http, digest, WIRE_PATH
+            binding = json.loads(os.environ[LIVE_ENV])
+            if (archives or kind != "run" or not args.url or args.gateway_profile
+                    or binding["idempotency_key"] != request.get("idempotency_key")
+                    or binding["request_identity"] != digest(request)
+                    or binding["namespace_identity"] != digest(os.environ.get("AGATE_AK", ""))
+                    or binding["route_identity"] != digest([args.url, WIRE_PATH, "", ""])):
+                raise ValueError("live Eval frozen submission changed before SDK call")
+            process = transport._run_direct_job(url=args.url, kind="eval", payload=request,
+                timeout=args.timeout, queue_wait_grace=grace, operation=kind,
+                http=sdk_http(dict(os.environ), args.url, deadline=binding["client_deadline"]),
+                submit_timeout=transport.MAX_HTTP_REQUEST_TIMEOUT, client_deadline=binding["client_deadline"])
+        elif archives:
             process = run_archived(args, workspace, grace, request, archives, transport=transport)
         elif args.url and executable is None:
             process = transport._run_direct_job(url=args.url, kind={"run":"eval", "check":"compile"}.get(kind, kind),

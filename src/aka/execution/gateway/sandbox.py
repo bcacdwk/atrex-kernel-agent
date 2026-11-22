@@ -1700,24 +1700,34 @@ def _run_direct_job(
     timeout: int,
     queue_wait_grace: int | None,
     on_submitted=None,
+    http=None,
+    operation=None,
+    submit_timeout=30,
+    client_deadline=None,
 ) -> subprocess.CompletedProcess[str]:
     """Submit and wait for any public gateway job kind through HTTP."""
     import uuid
     from .jobs import GatewayJobs
     from aka.execution.outcomes import observe_attempt
     attempt_id = uuid.uuid4().hex
+    http = http or _gateway_json
+    operation = operation or kind
     endpoint, profile = _submission_route(url)
     identity = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     key = payload.get("idempotency_key")
     started = time.monotonic()
     budget = client_wait_timeout(timeout, queue_wait_grace)
     deadline = None if budget is None else started + budget
-    emit_fact({"event": "attempt_started", "attempt_id": attempt_id, "operation": kind, "backend": "gateway"})
+    if client_deadline is not None:
+        deadline = min(deadline, client_deadline) if deadline is not None else client_deadline
+    if deadline is not None and time.monotonic() >= deadline:
+        raise TimeoutError("original Eval client deadline exhausted before submission")
+    emit_fact({"event": "attempt_started", "attempt_id": attempt_id, "operation": operation, "backend": "gateway"})
     emit_fact({"event": "submission_intent", "attempt_id": attempt_id, "request_identity": identity,
                "idempotency_key": key})
     try:
-        accepted = _gateway_json(endpoint or url, "POST", f"/v1/jobs/{kind}", payload,
-                                 30 if deadline is None else min(30, max(0, deadline - time.monotonic())))
+        accepted = http(endpoint or url, "POST", f"/v1/jobs/{kind}", payload,
+                                 submit_timeout if deadline is None else min(submit_timeout, max(0, deadline - time.monotonic())))
     except GatewayHTTPError as error:
         try:
             native = json.loads(error.detail)
@@ -1725,20 +1735,23 @@ def _run_direct_job(
             native = error.detail
         if isinstance(native, dict):
             native = native.get("error", native)
-        observe_attempt(subprocess.CompletedProcess((), 1, json.dumps({"error": native}), f"agate: [{error.status}]"),
-                        operation=kind, attempt_id=attempt_id)
+        receipt = {"error": native}
+        if isinstance(native, dict):
+            receipt.update({name: native[name] for name in ("replay_policy", "execution_state", "retry_advice") if name in native})
+        observe_attempt(subprocess.CompletedProcess((), 1, json.dumps(receipt), f"agate: [{error.status}]"),
+                        operation=operation, attempt_id=attempt_id)
         raise
     job_id = accepted.get("job_id")
     if not isinstance(job_id, str) or not job_id:
         raise RuntimeError("gateway submission returned no confirmed job identity")
     emit_fact({"event": "submitted", "attempt_id": attempt_id, "identifier": job_id,
-               "operation": kind, "backend": "gateway", "endpoint": endpoint, "profile": profile,
+               "operation": operation, "backend": "gateway", "endpoint": endpoint, "profile": profile,
                "request_identity": identity, "idempotency_key": key})
     if on_submitted is not None:
         on_submitted(accepted)
-    return _wait_direct_job(url=endpoint or url, kind=kind, job_id=job_id,
+    return _wait_direct_job(url=endpoint or url, kind=operation, job_id=job_id,
         deadline=deadline, started=started, attempt_id=attempt_id, profile=profile,
-        identity=identity, key=key)
+        identity=identity, key=key, http=http)
 
 
 def _observe_job_wait(job_id, job, started):
@@ -1768,17 +1781,18 @@ def _permanent_job_query_failure(args, job, status):
 
 
 def _wait_direct_job(*, url, kind, job_id, deadline, started, attempt_id=None,
-                     profile=None, identity="", key=None):
+                     profile=None, identity="", key=None, http=None):
     from aka.execution.outcomes import observe_attempt
     from .jobs import GatewayJobs
     from aka.contracts.execution_recovery import JobReference
+    http = http or _gateway_json
     last = {"job_id": job_id, "status": "unknown"}
     try:
         while deadline is None or time.monotonic() < deadline:
             remaining = 40 if deadline is None else deadline - time.monotonic()
             wait_for = min(30.0, remaining)
             try:
-                job = _gateway_json(url, "GET",
+                job = http(url, "GET",
                     f"/v1/jobs/{job_id}?wait=true&timeout={wait_for:.3f}", None, min(wait_for + 10, remaining))
                 if job.get("job_id") != job_id:
                     raise ValueError("original-job-identity-mismatch")
@@ -1802,7 +1816,7 @@ def _wait_direct_job(*, url, kind, job_id, deadline, started, attempt_id=None,
     except KeyboardInterrupt:
         emit_fact({"event": "cancel_requested", "identifier": job_id})
         reference = JobReference("gateway", job_id, kind, url, profile, identity, key)
-        jobs = GatewayJobs(endpoint=url, profile=profile, http=_gateway_json)
+        jobs = GatewayJobs(endpoint=url, profile=profile, http=http)
         _observe_cancel_cleanup(jobs.cancel(reference, timeout=10), job_id, kind, attempt_id)
         raise
 

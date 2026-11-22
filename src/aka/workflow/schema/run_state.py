@@ -188,18 +188,30 @@ class RunState:
             self._controls[permit] = control
             return permit
 
-    def admit_execution(self, *, command):
+    def admit_execution(self, *, command, continuation=None):
         if command.timeout > self.limits.per_job_timeout_seconds:
             raise BudgetDenied("Execution exceeds configured per-job timeout")
         with self.lock:
-            return self._admit("execution", "dispatches", {"workspace": str(command.workspace),
+            allowed = frozenset()
+            if continuation is not None:
+                from aka.execution.live_eval import LiveEval
+                if not isinstance(continuation, LiveEval):
+                    raise RecoveryRequired("Invalid live Eval authority")
+                allowed = continuation.admit(self, command)
+            permit = self._admit("execution", "dispatches", {"workspace": str(command.workspace),
                 "operation": command.operation, "hardware": command.hardware,
-                "command_digest": digest(list(command.command)), "timeout": command.timeout})
+                "command_digest": digest(list(command.command)), "timeout": command.timeout}, allowed=allowed)
+            if continuation is not None:
+                self.data["calls"][permit]["live_eval"] = dict(continuation.identity)
+                self.data["calls"][permit]["original_permit"] = continuation.permits[0] if continuation.permits else permit
+                self.save()
+                continuation.permits.append(permit)
+            return permit
 
-    def _admit(self, kind, counter, owner):
+    def _admit(self, kind, counter, owner, *, allowed=frozenset()):
         # A live model may synchronously call its tools. Only unresolved calls
         # inherited from a failed action bar admission; live parents are allowed.
-        if any(item["state"] == "unknown" for item in self.pending().values()):
+        if any(item["state"] == "unknown" and permit not in allowed for permit, item in self.pending().items()):
             raise RecoveryRequired("Unknown owner state prevents another dispatch")
         self.require_allowance(counter)
         self.require_allowance("tokens", 0)
@@ -238,7 +250,7 @@ class RunState:
                 self._controls.pop(permit, None)
             self.save()
 
-    def observe_execution(self, permit, *, event, value):
+    def observe_execution(self, permit, *, event, value, continuation=None):
         result = getattr(value, "execution_outcome", None) if event == "error" else value
         with self.lock:
             call = self.data["calls"][permit]
@@ -254,6 +266,18 @@ class RunState:
                 call["state"] = "unknown"
             if event == "error":
                 call["error_type"] = type(value).__name__
+            if continuation is not None and continuation.association is not None:
+                if (continuation.state is not self or not continuation.active
+                        or continuation.scope.closed or permit not in continuation.permits):
+                    raise RecoveryRequired("Live Eval association lost its original scope")
+                for linked in continuation.permits:
+                    original = self.data["calls"][linked]
+                    if original.get("live_eval") != continuation.identity:
+                        raise RecoveryRequired("Live Eval association changed owner")
+                    original["live_eval_association"] = dict(continuation.association)
+                    original["job_references"] = [continuation.association["job_reference"]]
+                    if continuation.association["terminal"]:
+                        original.update(state="settled", disposition="terminal")
             self.save()
 
     def reconcile(self, executor, *, recover_agent=None):

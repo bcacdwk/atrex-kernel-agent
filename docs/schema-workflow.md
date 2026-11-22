@@ -185,6 +185,23 @@ Current managed defaults respect the selected backend's Dev timeout limit;
 explicit incompatible deadlines are rejected before dispatch. Typed evaluation
 and the Schema root limits retain their separate budgets.
 
+Legacy can recover a transient inline Eval submission inside the same live
+call when `idempotent_replay=true` and an explicit gateway URL have been
+configured for a service verified to deduplicate identical keyed requests.
+This option defaults to false. The current path requires frozen AK/SK
+authentication, without token or named/routed profiles; it is tested with
+gateway SDK 0.14.36 and needs revalidation when that SDK changes.
+
+The original key, request body, route and job timeout stay fixed. At most two
+extra native launches use the existing 5/10-second retry schedule within 120
+seconds and the original client deadline; each consumes root/window allowance.
+SDK internal HTTP retries are not separate native launches. Original failures
+remain private artifacts, and only the same original job's terminal receipt
+settles the linked unknown submissions. Once a job ID is known, recovery only
+queries or cancels that job. Explicit no-replay policy, corrupted receipts,
+missing identity, another unknown owner or a process restart cannot obtain
+this live-call permission. Generic scoped replay remains disabled.
+
 Use a separate workspace for a finite diagnostic such as four Episodes; a
 finished diagnostic is intentionally terminal. Start the continuous campaign
 only after its configuration and observed behavior are accepted, retaining a
