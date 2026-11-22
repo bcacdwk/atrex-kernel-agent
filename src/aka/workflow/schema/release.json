@@ -545,8 +545,8 @@
       "size": 4172
     },
     "prompts/design.md": {
-      "sha256": "9b131b960a4b30283f838fc4396a900f25a705643bc607073a8a9f3e3b6f0b42",
-      "size": 536
+      "sha256": "bc99ffc257da374ea1128d84db680ac0e6bd5da796e88ada02c9febe2e1df541",
+      "size": 1623
     },
     "prompts/extract.md": {
       "sha256": "ffd6fa5b8948efc19db9a0ae3c7ee7b23a246cc1fa169c11e1cd704f600d18d5",
@@ -565,8 +565,8 @@
       "size": 725
     },
     "prompts/reviewer.md": {
-      "sha256": "6fa64698794c0b5a36798f018beaf7d015e941e25db0c9242b57069394fc6922",
-      "size": 3060
+      "sha256": "ec06c6e15a2bebb8d0770d068c6b05b5251b36323e8a3ba484db6c94865656b5",
+      "size": 3666
     },
     "prompts/schema_call.py": {
       "sha256": "1479045138da14988d498c1323809531e0a0462af970b55602446e991dbf41ac",

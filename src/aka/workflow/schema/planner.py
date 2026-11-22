@@ -723,22 +723,44 @@ class Planner:
             {"operation_id": operation_id, "prompt_sha256": _digest(prompt.encode())})
         if (directory / "result.json").exists():
             return _load(directory / "result.json")
-        attempt = directory / "attempts/1"
-        receipt = self._call(attempt, inputs, prompt, operation_id)
         result = {"qualified": False, "verdict": "unknown", "substantive_change": False,
                   "basis": "independent model judgment; not a formal proof",
-                  "binding": binding, "operation_id": operation_id, "calls": 1,
+                  "binding": binding, "operation_id": operation_id, "calls": 0,
                   "directory": str(directory), "diagnostics": [], "evidence": []}
-        if receipt is None:
-            result["diagnostics"] = [_notice("invocation.unknown", "Started reviewer call has no retained receipt; settle its owner before retrying.")]
-            return result
-        if receipt["timed_out"] or receipt["exit_status"] != 0:
-            result["diagnostics"] = [_notice("invocation.failed", "Reviewer did not complete successfully")]
-        else:
+        for attempt_number in range(1, self.config.max_repairs + 2):
+            attempt = directory / "attempts" / str(attempt_number)
+            attempt_inputs, call_prompt = dict(inputs), prompt
+            if result["diagnostics"]:
+                attempt_inputs["task/repair-diagnostics.json"] = _json(result["diagnostics"])
+                previous = directory / "attempts" / str(attempt_number - 1) / "raw/decision.json"
+                if previous.exists():
+                    raw = read_source_bytes(previous)
+                    if len(raw) <= MAX_DECISION_BYTES:
+                        attempt_inputs["previous-output/decision.json"] = raw
+                call_prompt += ("\n\nThis is a bounded output-format correction. Read inputs/task/repair-diagnostics.json "
+                    "and inputs/previous-output/decision.json when present. Write a fresh complete decision resolving "
+                    "those protocol diagnostics for the same frozen Task, hardware, design, candidate and initial seed. "
+                    "Preserve substantive judgments: real deviations remain fail and unresolved questions remain unknown. "
+                    "A diagnostic is not a request for a passing verdict. Do not change source or design.")
+            receipt = self._call(attempt, attempt_inputs, call_prompt, operation_id, read_only_design=True)
+            result["calls"] = attempt_number
+            if receipt is None:
+                result["diagnostics"].append(_notice("invocation.unknown",
+                    "Started reviewer call has no retained receipt; settle its owner before retrying."))
+                return result
+            if receipt["timed_out"] or receipt["exit_status"] != 0:
+                result["diagnostics"].append(_notice("invocation.failed", "Reviewer did not complete successfully"))
+                break
+            # A damaged retained artifact is a host recovery problem, not a
+            # reason to buy another review. Fresh output still needs parsing.
+            collected = (attempt / "collected.json").exists()
+            if collected:
+                files, problems = self._collect(attempt)
             try:
                 # Reviews write a decision object, without any candidate source
                 # or design edits. Use the same complete raw retention protocol.
-                files, problems = self._collect(attempt)
+                if not collected:
+                    files, problems = self._collect(attempt)
                 if problems or set(files) != {"decision.json"}:
                     raise ValueError("review must return only decision.json")
                 if len(files["decision.json"]) > MAX_DECISION_BYTES:
@@ -780,8 +802,18 @@ class Planner:
                     substantive_change=substantive, evidence=evidence_rows, change_evidence=changes)
                 if value["verdict"] == "pass" and not result["qualified"]:
                     result["verdict"] = "unknown" if any(row["verdict"] == "unknown" for row in rows) else "fail"
-            except _DATA_ERRORS as error:
-                result["diagnostics"] = list(_diagnostics(error))
+                # A well-formed fail/unknown is final; only output protocol
+                # diagnostics authorize a bounded, separately admitted call.
+                break
+            except (ValueError, UnicodeError, CapacityError, ReadError) as error:
+                diagnostics = list(_diagnostics(error))
+                path = attempt / "diagnostics.json"
+                if path.exists():
+                    if _load(path) != diagnostics:
+                        raise ValueError("retained review diagnostics changed")
+                else:
+                    durable_write_json(path, diagnostics)
+                result["diagnostics"].extend(diagnostics)
         durable_write_json(directory / "result.json", result)
         return result
 

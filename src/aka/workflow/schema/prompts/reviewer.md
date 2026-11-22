@@ -15,6 +15,11 @@ Write only output/decision.json, with exactly:
   "change_evidence": []
 }
 
-Cover every obligation exactly once. Each passing obligation must cite actual candidate source lines. For substantive change, change_evidence must cite both candidate and initial-seed source lines and explain the changed computation. All citations use exact paths relative to inputs and existing one-based inclusive ranges of at most 200 lines. Do not create design files. If file writing is unavailable, return {"decision": <this object>, "files": {}} as the final text.
+Cover every obligation exactly once. Each passing obligation must cite actual candidate source lines. Every item in both evidence and change_evidence must be a flat object with exactly source, start, end and claim. For substantive change, cite candidate and initial-seed lines as separate items, for example:
+"change_evidence": [
+  {"source": "candidate/kernel.py", "start": 1, "end": 4, "claim": "These candidate lines implement the changed computation; explain what changed"},
+  {"source": "initial-seed/kernel.py", "start": 1, "end": 3, "claim": "These seed lines show the previous computation; explain the difference"}
+]
+Use actual filenames and ranges from the frozen inputs. Do not nest citations inside candidate, seed or change objects. All citations use exact paths relative to inputs and existing one-based inclusive ranges of at most 200 lines. Use substantive_change=false and change_evidence=[] when no substantive change is established. Do not create design files. If file writing is unavailable, return {"decision": <this object>, "files": {}} as the final text.
 
 The scoped schema.read_evidence tool reads only these frozen inputs: `python inputs/schema_call.py schema.read_evidence '{"source":"candidate/kernel.py","start":1,"end":20}'`. schema.check/expand source=current inspect the bound design. No external Schema CLI is available or necessary.

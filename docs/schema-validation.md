@@ -66,3 +66,5 @@
 - 首轮生产策略审查接受，但 Schema reviewer 的3条 change_evidence 使用嵌套对象，未满足 source/start/end/claim 协议。原输出保留，规范结果为 unknown，未晋升；控制器自然进入第二 Episode。不能把原始未验证的 pass 转成有效结论。
 - 进展消费者仅读聚合结果、忽略 terminal attempt，并误把完整原生 ABBA 当作部分测量，导致漏认真实进展。修复复用原生记录投影及完整 Task/源码/计划绑定；区分首次有效测量、同次 ABBA 和须已知环境的跨记录比较，unknown 不冒充停滞或进展。相关136项通过，补充 Coder 确定性接线后最终82项通过（组合重叠）。原始未晋升源码只读取出及完整 ABBA 请求构造已验证，未新增 GPU 调用；旧 unknown 审查结果保持，运行安装尚未升级。
 - GEMM 的 high 独立试验真实请求已核实，V0通过10形状、60 correctness cases；截至15:47 UTC仍未产出设计，已两次 thinking-only 达到32000输出。调低 effort 尚未证明解决问题；仍需有效设计与后续 D/E 实测。
+- qualification 现复用原生调用/留存路径，对格式无效的完整输出最多追加配置允许的修正次数；合法 fail/unknown、调用失败及未知 owner 不触发格式重试。reviewer 补了扁平 change_evidence 示例，旧终态不改。相关92项和最终64项 CPU 组合通过（重叠），涵盖计量、预算、丢返回恢复、输入身份及保留文件损坏。
+- GEMM high 至15:54又发生第三次 thinking-only 截断，仍无候选。max/high 输入相同，约26.7万字节中85%是规范，截断思考未进入后续请求。design 提示仅补充“简单完整初版尽早落稿→check→按诊断完善”，保留所有义务和验收门；与 reviewer 统一更新 release，真实效果待新版本试验。旧根的封存调用不能悄悄换提示。

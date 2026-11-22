@@ -107,6 +107,15 @@ unchanged source, partial measurements and unknown qualification do not count
 as new design progress. Independent qualification is a model judgment, not a
 formal proof; the native correctness and promotion gates still apply.
 
+Qualification can correct a completed review's malformed output up to Planner's
+`max_repairs` limit (default one). Each correction uses a fresh, admitted and
+metered native session with the same frozen Task, hardware, design, candidate and
+initial seed, plus the preceding output and protocol diagnostics. Original
+attempts remain retained. A valid `fail` or `unknown` ends the review without a
+correction; exhausted format errors remain unqualified and unknown. Failed or
+unsettled native calls do not receive output corrections. Recovery reuses retained
+receipts and terminal results without repeating calls or refunding usage.
+
 Progress uses original terminal Experiment evidence for the independently
 qualified, sealed source. Complete current Task correctness and the first full
 measurement are finite milestones, including native assessments retained on
@@ -135,6 +144,14 @@ allowance. Resume in place using the same selection, configuration and request.
 Changed task, device, materials or budget identities are rejected. Completed
 runs replay their existing terminal result and do not acquire a fresh budget.
 Native checkpoint export/import is not supported for Schema workspaces.
+
+Reviewer prompt changes update the shipped release identity and new operation
+intent. They do not migrate existing operations: an existing intent rejects a
+different prompt, and completed qualification results remain terminal. The
+recorded native launch also binds package code and materials. Installing changed
+code or prompts is not authorization to replace that capture or silently resume
+an older root under the new release; use a separately identified root to validate
+the new release when the original identities no longer match.
 
 Unknown model calls or GPU jobs must first be reconciled with their original
 owners. The controller does not resubmit them to keep the process moving.

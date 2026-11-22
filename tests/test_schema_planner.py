@@ -400,12 +400,13 @@ def test_qualification_completion_or_self_approval_is_unknown(harness):
     def review(workspace, env):
         (workspace / "output/decision.json").write_text(json.dumps({"qualified": True}))
         return "completed"
-    h.actions.append(review)
+    h.actions.extend([review, review])
     result = h.planner.qualify(design_ref=ref, prepared_id="prepared", operation_id="review-1",
         directory=h.request.directory.parent / "review", source=RevisionContent({"kernel.py": b"pass\n"}),
         source_identity="native-source-id", evidence={"public_task": h.request.public_task,
                                                        "target_hardware": h.request.target_hardware})
     assert result["qualified"] is False and result["verdict"] == "unknown" and result["diagnostics"]
+    assert result["calls"] == 2
 
 
 def test_qualification_requires_independent_task_and_hardware(harness):
