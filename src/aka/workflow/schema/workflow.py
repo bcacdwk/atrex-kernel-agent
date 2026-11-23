@@ -14,6 +14,11 @@ from aka.core.filesystem import read_regular_bytes
 from .materials import DesignRef, read_design, snapshot_ref
 from .run_state import BudgetDenied, RecoveryRequired, RunLimits, RunState, digest, execution_attempt_identity
 from .progress import needs_new_hypothesis
+from .qualification_feedback import applies_to, coder_feedback, project, unavailable
+from .execution_context import (authorize_contract_correction, restore_execution_context,
+                                check_contract_change, validate_contract_correction,
+                                validate_design_execution_context, publication_execution_context,
+                                check_context_hardware)
 
 
 WINDOW_EPISODES = 4
@@ -163,11 +168,19 @@ def _measurement_feedback(record):
     return result
 
 
-def build_feedback(state):
+def build_feedback(state, *, qualification_feedback=None):
     """Bounded public prose/identities, never raw private evaluator inputs."""
     data = state.data
     hypothesis = data["hypotheses"].get(data["hypothesis"], {})
     episodes = list(data["episodes"].values())[-WINDOW_EPISODES:]
+    if qualification_feedback is None:
+        qualification_feedback = unavailable("qualification-receipt-missing")
+    if (qualification_feedback.get("status") == "reviewed" and (not data["design"]
+            or not applies_to(qualification_feedback, prepared=data["prepared"],
+                design_identity=data["design"]["identity"],
+                execution_context_sha256=data.get("execution_context", {}).get("execution_context_sha256")))):
+        qualification_feedback = unavailable("qualification-binding-mismatch")
+    qualification_feedback = {**qualification_feedback, "scope": "historical-reviewed-source"}
     value = {"design": data["design"], "prepared_id": data["prepared"]["identity"],
         "champion": data["champion"], "tested_candidate": data["tested_candidate"],
         "working_draft": data["working_draft"], "stagnant_windows": hypothesis.get("stagnant", 0),
@@ -176,6 +189,7 @@ def build_feedback(state):
         "design_comparison_target": ("kernel-" + hypothesis["native_frontier"]["source"]["identity"]
                                      if hypothesis.get("native_frontier") else None),
         "preparation_measurements": data.get("preparation_measurements", []),
+        "qualification_feedback": qualification_feedback,
         "episodes": [{key: row.get(key) for key in ("episode", "status", "accepted", "violation", "progress", "progress_assessment", "records", "measurements")}
                      for row in episodes],
         "require_new": needs_new_hypothesis(hypothesis),
@@ -207,6 +221,12 @@ def build_feedback(state):
                 result["measurements"] = [{key: item[key] for key in (
                     "method", "completeness", "validity", "comparability", "environment_identity")}
                     for item in result.get("measurements", [])[-1:]]
+    if len(encode()) > FEEDBACK_CHARACTERS:
+        # Specific independent feedback takes precedence over repeated native
+        # measurement detail. It is already bounded and identity-bearing.
+        value["milestones"] = []
+        for row in value["episodes"]:
+            row["measurements"], row["records"] = [], []
     text = encode()
     if len(text) > FEEDBACK_CHARACTERS:
         raise RecoveryRequired("Public feedback identities exceed the bounded Planner input")
@@ -221,16 +241,26 @@ class SchemaWorkflow:
     """
     def __init__(self, directory, *, planner, executor, workspace, limits: RunLimits,
                  initial: ExistingStart | SuppliedStart | None = None, stop_event=None, recover_agent=None,
-                 candidate_qualification=None, sleep=time.sleep, sota: SotaStart | None = None):
+                 candidate_qualification=None, sleep=time.sleep, sota: SotaStart | None = None,
+                 task_constraint_review=None, retained_job_evidence=None):
         if initial is not None and sota is not None:
             raise ValueError("supplied kernel/Schema and source-only extraction are distinct, mutually exclusive C inputs")
         if initial is not None and not isinstance(initial, (ExistingStart, SuppliedStart)) or sota is not None and not isinstance(sota, SotaStart):
             raise TypeError("C input must be an explicit ExistingStart, SuppliedStart or SotaStart")
+        from ._native import RetainedJobEvidence, TaskConstraintReview
+        if task_constraint_review is not None and not isinstance(task_constraint_review, TaskConstraintReview):
+            raise TypeError("Task correction authority requires a complete owner TaskConstraintReview")
+        if retained_job_evidence is not None and not isinstance(retained_job_evidence, RetainedJobEvidence):
+            raise TypeError("Runtime correction authority requires original RetainedJobEvidence")
         self.directory = Path(directory).absolute()
         self.planner, self.executor, self.initial = planner, executor, initial
         self.sota = sota
         self.stop_event, self.recover_agent, self.sleep = stop_event, recover_agent, sleep
         self.candidate_qualification = candidate_qualification
+        # Trusted public embedding inputs for NEW operations only. They are not
+        # RootIdentity/config fields and cannot alter an existing frozen action.
+        self.task_constraint_review = task_constraint_review
+        self.retained_job_evidence = retained_job_evidence
         materials = snapshot_ref(planner.materials_snapshot)
         self.state = RunState(self.directory, limits=limits, workspace=workspace,
             identity={"materials": materials, "initial": initial.as_dict() if initial else None,
@@ -787,6 +817,56 @@ class SchemaWorkflow:
         self.state.data.pop("retry_after", None)
         self.state.save()
 
+    def _restore_context(self, frozen, *, operation_id=None):
+        raw = frozen.get("execution_context")
+        if raw is None:
+            return None  # Historical operations never acquire new inputs.
+        expected = frozen["execution_context_sha256"]
+        if operation_id is not None:
+            intent = self.directory / "operations" / operation_id / "intent.json"
+            if intent.exists():
+                original = json.loads(read_regular_bytes(intent, limit=2 * 1024 * 1024))
+                if original.get("inputs", {}).get("task/execution.json") != expected:
+                    raise RecoveryRequired("Frozen execution context differs from the original Planner intent")
+        context = restore_execution_context(raw.encode(), expected_sha256=expected)
+        prepared = self.state.data["prepared"]
+        context.validate_request(prepared["identity"], prepared["public_task"], prepared["hardware"])
+        if context.as_dict()["binding"]["native_policy_sha256"] != digest(prepared["native_policy"]):
+            raise RecoveryRequired("Frozen execution context belongs to another native policy")
+        return context
+
+    def _new_context(self, campaign, operation_id):
+        from ._native import execution_context
+        from aka.contracts.experiment import ExperimentRef
+        data = self.state.data
+        native_workflow = getattr(getattr(campaign, "tool_runtime", None), "workflow", None)
+        retained_job = getattr(self, "retained_job_evidence", None)
+        task_review = getattr(self, "task_constraint_review", None)
+        if native_workflow is None and retained_job is None and task_review is None:
+            return None  # Legacy custom embeddings retain their original API.
+        self._check_prepared(campaign)
+        retained = data.get("execution_context")
+        if retained is not None:
+            context = self._restore_context(retained)
+            document = context.as_dict()
+            same_evidence = retained_job is None or all(document[name]["evidence_sha256"] == retained_job.raw_sha256
+                for name in ("architecture", "toolchain"))
+            same_review = task_review is None or task_review.inspect(data["prepared"]["public_task"]) == document["task_constraints"]
+            same_review = same_review and (task_review is None or task_review.bind_device_label(context).sha256 == context.sha256)
+            if same_evidence and same_review:
+                return context
+        return execution_context(campaign=campaign, prepared=data["prepared"], executor=self._recovery_executor,
+            directory=self.directory / "execution-inputs" / operation_id,
+            task_review=task_review, retained_job=retained_job,
+            preparation_records=tuple(ExperimentRef(**row["experiment"])
+                for row in data.get("preparation_measurements", [])))
+
+    @staticmethod
+    def _freeze_context(context):
+        if context is None:
+            return {}
+        return {"execution_context": context.as_bytes().decode(), "execution_context_sha256": context.sha256}
+
     def _plan(self, campaign):
         from .planner import PlannerRequest
         data = self.state.data
@@ -807,12 +887,31 @@ class SchemaWorkflow:
         frozen = data.get("planner_request")
         if frozen is None or frozen["operation_id"] != operation_id:
             frozen = {"operation_id": operation_id, "version": data["design_version"] + 1,
-                "current_design": data["design"], "feedback": [{"text": build_feedback(self.state)}] if data["design"] else [],
+                "current_design": data["design"], "feedback": [{"text": build_feedback(self.state,
+                    qualification_feedback=self._qualification_feedback(campaign))}] if data["design"] else [],
                 "require_new": needs_new_hypothesis(hypothesis),
                 "sources": {role: data[role] for role in ("champion", "tested_candidate", "working_draft")
                             if data[role] is not None}}
+            if operation != "extract":
+                context = self._new_context(campaign, operation_id)
+                frozen.update(self._freeze_context(context))
+                if frozen["current_design"] is not None and self.task_constraint_review is not None:
+                    try:
+                        correction = authorize_contract_correction(context, DesignRef.from_dict(frozen["current_design"]))
+                    except ValueError:
+                        # Unknown review or inapplicable evidence gives no
+                        # special authority; ordinary strict equality remains.
+                        correction = None
+                    if correction is not None:
+                        frozen["contract_correction_sha256"] = correction.sha256
             data["planner_request"] = deepcopy(frozen)
             self.state.save()  # Before role intent/admission, including crash recovery.
+        context = self._restore_context(frozen, operation_id=operation_id)
+        correction = None
+        if frozen.get("contract_correction_sha256"):
+            correction = authorize_contract_correction(context, DesignRef.from_dict(frozen["current_design"]))
+            if correction.sha256 != frozen["contract_correction_sha256"]:
+                raise RecoveryRequired("Frozen Contract correction changed during replay")
         source_files = {}
         for role, ref in frozen["sources"].items():
             source = self.state.read_source(ref, owner=campaign.candidate_workspace)
@@ -821,7 +920,8 @@ class SchemaWorkflow:
             version=frozen["version"], directory=self.directory / "operations" / operation_id,
             public_task=data["prepared"]["public_task"], target_hardware=data["prepared"]["hardware"],
             current_design=DesignRef.from_dict(frozen["current_design"]) if frozen["current_design"] else None,
-            feedback=tuple(frozen["feedback"]), require_new=frozen["require_new"], source_files=source_files)
+            feedback=tuple(frozen["feedback"]), require_new=frozen["require_new"], source_files=source_files,
+            execution_context=context, contract_correction=correction)
         if operation == "extract":
             if self.sota is None:
                 raise RecoveryRequired("retained extract phase has no explicit SOTA source")
@@ -836,6 +936,8 @@ class SchemaWorkflow:
         if result.operation_id != operation_id:
             raise RecoveryRequired("Planner result belongs to another operation")
         error = None
+        fact_correction = False
+        implementation_context = context
         if result.status == "replace":
             artifact = read_design(result.design_ref)
             if (artifact.manifest["prepared_id"] != request.prepared_id
@@ -845,30 +947,63 @@ class SchemaWorkflow:
                     or artifact.manifest["parent"] != (request.current_design.as_dict() if request.current_design else None)):
                 raise RecoveryRequired("Planner design publication binding differs from its request")
             previous = read_design(request.current_design) if request.current_design else None
+            if result.contract_correction is not None:
+                from .planner import _execution_view
+                validate_contract_correction(correction, context, request.current_design)
+                check_contract_change(previous, artifact.checked, context=context, proof=correction)
+                metadata = result.contract_correction
+                fact_correction = _execution_view(previous.checked) == _execution_view(artifact.checked)
+                if (metadata != {"kind": "fact_correction" if fact_correction else "execution_rewrite",
+                        "proof_sha256": correction.sha256, "execution_context_sha256": context.sha256,
+                        "parent_identity": request.current_design.identity}
+                        or fact_correction and result.changed_execution_decisions):
+                    raise RecoveryRequired("Planner correction metadata differs from the verified publication")
             same = previous is not None and previous.manifest["closure_digest"] == artifact.manifest["closure_digest"]
             new_hypothesis = bool(result.hypothesis_key and result.changed_execution_decisions and result.evidence
                                   and result.hypothesis_key != data["hypothesis"] and not same)
             if same:
                 error = "Identical design bytes are keep; replacement cannot renew a hypothesis"
-            elif needs_new_hypothesis(data["hypotheses"].get(result.hypothesis_key, {})):
+            elif not fact_correction and needs_new_hypothesis(data["hypotheses"].get(result.hypothesis_key, {})):
                 error = "Revisiting an exhausted hypothesis retains its earlier history"
-            elif request.require_new and not new_hypothesis:
+            elif not fact_correction and request.require_new and not new_hypothesis:
                 error = "Current hypothesis is exhausted; provide a new execution decision with evidence"
             else:
                 data["design"], data["design_version"] = result.design_ref.as_dict(), request.version
-                if new_hypothesis or data["hypothesis"] is None:
+                if not fact_correction and (new_hypothesis or data["hypothesis"] is None):
                     key = result.hypothesis_key or "design:" + artifact.manifest["closure_digest"]
                     data["hypothesis"] = key
                     data["hypotheses"].setdefault(key, self._new_hypothesis(data["champion"]))
                 # Every new graph begins at the real champion. Attribution of
                 # this inherited source is retained until actual new evidence.
-                data["working_draft"] = data["champion"]
+                if not fact_correction:
+                    data["working_draft"] = data["champion"]
         elif result.status == "keep":
             if (request.require_new or data["working_draft"] is None or not result.next_actions
                     or data["design"] is None):
                 error = "Keep requires an unexhausted hypothesis, real draft and a testable next action"
             elif hypothesis.get("uncertain_windows", 0) and digest(list(result.next_actions)) in hypothesis.get("tried_actions", []):
                 error = "Unknown performance requires an untried evidence-gathering action or a new hypothesis"
+            else:
+                try:
+                    retained = read_design(request.current_design)
+                    published_context = publication_execution_context(retained)
+                    if published_context is not None:
+                        if context is None:
+                            raise ValueError("keep cannot discard published context")
+                        old, new = published_context.as_dict(), context.as_dict()
+                        if old["binding"] != new["binding"] or any(
+                                new[name]["source"] != "unknown" and new[name]["value"] != old[name]["value"]
+                                for name in ("architecture", "toolchain", "selected_framework")):
+                            raise ValueError("new planning facts contradict the published design")
+                        # A new evidence digest alone is not a new design. E's
+                        # input remains frozen on its own operation; D/reviewer
+                        # retain the original publication's exact context.
+                        implementation_context = published_context
+                    else:
+                        check_context_hardware(retained.checked, context, parent=retained)
+                    validate_design_execution_context(retained, implementation_context)
+                except ValueError:
+                    error = "Conflicting execution facts require a corrected publication before implementation"
         elif result.status == "stop":
             # Planner may close its own hypothesis, never the user's continuous
             # task. A no-design response enters bounded replanning/diagnosis.
@@ -887,8 +1022,10 @@ class SchemaWorkflow:
                           if self.limits.retry_delays else 0)
             return
         data["planner_failures"] = 0
+        if implementation_context is not None:
+            data["execution_context"] = self._freeze_context(implementation_context)
         data["next_actions"] = list(result.next_actions)
-        if data["hypothesis"] is not None:
+        if data["hypothesis"] is not None and not fact_correction:
             actions = data["hypotheses"][data["hypothesis"]].setdefault("tried_actions", [])
             key = digest(data["next_actions"])
             if key not in actions:
@@ -907,6 +1044,75 @@ class SchemaWorkflow:
             self.state.save()
         return data["window"]
 
+    def _project_qualification(self, binding, receipt, sealed, source):
+        if receipt is None:
+            return unavailable("qualification-receipt-missing", episode=binding["episode"])
+        if not isinstance(receipt, dict):
+            return unavailable("qualification-unknown", episode=binding["episode"])
+        if sealed is None or source is None:
+            return unavailable("qualification-sealed-source-unavailable", episode=binding["episode"])
+        try:
+            artifact = read_design(DesignRef.from_dict(binding["design"]))
+        except (KeyError, TypeError, ValueError, OSError):
+            # A missing public reading view cannot turn a native settlement
+            # into another review or block retention of its original verdict.
+            return unavailable("qualification-design-unavailable", episode=binding["episode"])
+        if artifact.manifest["prepared_id"] != binding["prepared_id"]:
+            return unavailable("qualification-binding-mismatch", episode=binding["episode"])
+        obligations = {"root.CONTRACT.Algorithm_requirement", "root.CONTRACT.Hardware_specification", "dispatch"}
+        obligations.update(name + ".DESIGN." + region for name in artifact.checked.resolved.raw_task
+            for region in ("Math_reshape", "Work_schedule", "Tile_pipeline"))
+        return project(receipt, binding=binding, prepared=self.state.data["prepared"],
+            sealed_identity=sealed["identity"], source_files=source.files,
+            design_files=artifact.checked.files, obligations=obligations)
+
+    def _qualification_feedback(self, campaign, *, seed_identity=None, context_binding=None):
+        """New request view only: legacy rows and native receipts stay untouched."""
+        from aka.workflow.light.long_horizon.store import CampaignStore
+        data = self.state.data
+        expected = data.get("execution_context", {}) if context_binding is None else context_binding
+        fallback = unavailable("qualification-no-matching-review" if data["episodes"]
+            else "qualification-receipt-missing")
+        native = None
+        for row in reversed(list(data["episodes"].values())[-WINDOW_EPISODES:]):
+            binding, sealed = row["binding"], row.get("sealed_candidate")
+            if binding["design"]["identity"] != data["design"]["identity"]:
+                continue
+            if seed_identity is not None and (sealed is None or sealed["identity"] != seed_identity):
+                continue
+            summary = row.get("qualification_feedback")
+            if summary is None:
+                # Borrow the existing native archive reader without opening an
+                # engine/runtime or exposing its private archive to the Agent.
+                if native is None:
+                    checkpoint, _ = CampaignStore.checkpoint(campaign.workspace)
+                    native = {item["episode"]: item for item in checkpoint.attempts}
+                attempt = native.get(row["episode"], {})
+                try:
+                    source = self.state.read_source(sealed, owner=campaign.candidate_workspace) if sealed else None
+                except (KeyError, ValueError, OSError, RecoveryRequired):
+                    summary = unavailable("qualification-sealed-source-unavailable", episode=row["episode"])
+                else:
+                    summary = self._project_qualification(binding, attempt.get("candidate_qualification"), sealed, source)
+            if summary.get("status") == "reviewed" and not applies_to(summary,
+                    prepared=data["prepared"], design_identity=data["design"]["identity"],
+                    source_identity=seed_identity,
+                    execution_context_sha256=expected.get("execution_context_sha256")):
+                summary = unavailable("qualification-binding-mismatch", episode=row["episode"])
+            if seed_identity is not None:
+                if summary.get("status") == "reviewed":
+                    return summary
+                if "original_episode" not in fallback:
+                    fallback = summary
+                continue
+            # E sees the newest concrete failure ahead of later Episodes that
+            # never produced an independent review, with its original identity.
+            if summary.get("verdict") == "fail":
+                return summary
+            if "original_episode" not in fallback:
+                fallback = summary
+        return fallback
+
     def _implement(self, campaign):
         from .planner import coder_context
         data = self.state.data
@@ -919,25 +1125,40 @@ class SchemaWorkflow:
             self.state.require_window_allowance("dispatches")
             number = data["counts"]["episodes"] + 1
             operation_id = self.state.action("implement")
+            execution = (self._restore_context(data["execution_context"]) if data.get("execution_context")
+                         else self._new_context(campaign, operation_id))
             seed = data["working_draft"] or data["champion"]
+            binding = {"episode": number, "operation_id": operation_id, "window": window["id"],
+                "design": data["design"], "prepared_id": data["prepared"]["identity"],
+                "seed": seed, "hypothesis": data["hypothesis"], **self._freeze_context(execution)}
             frontier = data["hypotheses"][data["hypothesis"]].get("native_frontier")
             context = coder_context(DesignRef.from_dict(data["design"]), data["prepared"]["identity"], number, seed["identity"],
                 next_actions=data.get("next_actions", ()),
-                comparison_target="kernel-" + frontier["source"]["identity"] if frontier else None)
-            binding = {"episode": number, "operation_id": operation_id, "window": window["id"],
-                "design": data["design"], "prepared_id": data["prepared"]["identity"],
-                "seed": seed, "context": context, "context_id": digest(context), "hypothesis": data["hypothesis"]}
+                comparison_target="kernel-" + frontier["source"]["identity"] if frontier else None,
+                execution_context=execution)
+            context += coder_feedback(self._qualification_feedback(campaign,
+                seed_identity=seed["identity"], context_binding=binding))
+            binding.update(context=context, context_id=digest(context))
+            if execution is not None:
+                # First adoption by a new D also freezes the context for later
+                # operations on a legacy/imported design; its old inputs stay intact.
+                data["execution_context"] = self._freeze_context(execution)
             data["binding"] = binding
             data["counts"]["episodes"] = number
             self.state.save()  # Before native admission and seed installation.
         seed = self.state.read_source(binding["seed"], owner=campaign.candidate_workspace)
+        execution = self._restore_context(binding)
         def qualify(**native):
             source = campaign.candidate_workspace.read_source(native["worktree"].path,
                 revision=native["candidate_commit"])
             identity = campaign.candidate_workspace.source_identity(source)
             if self.candidate_qualification is not None:
-                return self.candidate_qualification(binding=dict(binding), source=source,
+                result = self.candidate_qualification(binding=dict(binding), source=source,
                     source_identity=identity, **native)
+                if execution is not None and (result.get("binding", {}).get("source_identity") != identity
+                        or result.get("binding", {}).get("execution_context_sha256") != execution.sha256):
+                    raise RecoveryRequired("Qualification callback does not bind the sealed source and execution context")
+                return result
             original = self.state.read_source(data["hypotheses"][binding["hypothesis"]]["seed"],
                 owner=campaign.candidate_workspace)
             result = self.planner.qualify(design_ref=DesignRef.from_dict(binding["design"]),
@@ -948,9 +1169,12 @@ class SchemaWorkflow:
                     "public_task": data["prepared"]["public_task"],
                     "target_hardware": data["prepared"]["hardware"],
                     "seed_identity": campaign.candidate_workspace.source_identity(original),
-                    "seed_files": dict(original.files)})
+                    "seed_files": dict(original.files)},
+                **({"execution_context": execution} if execution is not None else {}))
             if result.get("binding", {}).get("source_identity") != identity:
                 raise RecoveryRequired("Qualification receipt does not bind the sealed native source")
+            if result.get("binding", {}).get("execution_context_sha256") != binding.get("execution_context_sha256"):
+                raise RecoveryRequired("Qualification receipt does not bind the frozen execution context")
             return {**result, "source_identity": identity}
         engine = campaign.create_engine(continuous=campaign.max_iters == 0,
             episode_context=binding["context"], episode_seed=seed, candidate_qualification=qualify)
@@ -1032,7 +1256,9 @@ class SchemaWorkflow:
             "tokens": attempt.get("tokens"), "telemetry": attempt.get("telemetry"),
             "draft": draft, "sealed_candidate": sealed, "tested_candidate": tested,
             "champion": champion, "records": records, "measurements": measurements[-8:], "progress": progress,
-            "progress_assessment": progress_assessment}
+            "progress_assessment": progress_assessment,
+            "qualification_feedback": self._project_qualification(binding,
+                attempt.get("candidate_qualification"), sealed, facts["candidate"])}
         data["seen_records"] = sorted(set(data["seen_records"]) | {_record_key(record) for record in facts["records"]})
         data["window"]["episodes"].append(episode)
         data["window"]["progress"].extend(progress)
@@ -1078,7 +1304,8 @@ class SchemaWorkflow:
                 or receipt.get("public_task_sha256") != hashlib.sha256(
                     self.state.data["prepared"]["public_task"].encode()).hexdigest()
                 or receipt.get("target_hardware_sha256") != hashlib.sha256(
-                    self.state.data["prepared"]["hardware"].encode()).hexdigest()):
+                    self.state.data["prepared"]["hardware"].encode()).hexdigest()
+                or receipt.get("execution_context_sha256") != binding.get("execution_context_sha256")):
             assessment["reasons"] = ["qualification-binding-mismatch"]
             return []
         if qualified.get("qualified") is not True:

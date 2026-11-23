@@ -29,12 +29,34 @@ from .language import (CapacityError, CheckPolicy, SchemaError, check_design,
 from .language.yaml_source import ReadError, read_source_bytes
 from .materials import (DesignRef, _directory, _json, _member, closure_digest,
                         publish_design, read_design, role_material_view)
+from .execution_context import (ContractCorrection, ExecutionContext, check_context_hardware,
+                                check_contract_change, context_input, validate_contract_correction,
+                                validate_successor_execution_context,
+                                validate_design_execution_context)
 
 PROMPTS = Path(__file__).parent / "prompts"
 MAX_FEEDBACK_BYTES = 32_768
 MAX_DECISION_BYTES = 131_072
 _CLAUDE_MANAGED_ROOT = Path("/etc/claude-code")
 _DATA_ERRORS = (ValueError, OSError, UnicodeError, SchemaError, CapacityError, ReadError)
+
+
+def _legacy_device_notice(context):
+    return ("\nThe host-reviewed legacy_device_label.value is the frozen Schema Device for this publication lineage; "
+            "retain it byte-for-byte. canonical_hardware Device remains the actual native target. "
+            "This declaration grants no Device edits or other GPU aliases.\n"
+            if context is not None and "legacy_device_label" in context.as_dict() else "")
+
+
+def _role_prompt(name, execution_context=None):
+    raw = read_source_bytes(PROMPTS / name)
+    # The original bytes remain the exact legacy prompt, including final LF.
+    # Existing no-context operations retain their original intent and replay.
+    if execution_context is None:
+        raw = raw.partition(b"\n<!-- execution-context-v1 -->\n")[0]
+    elif name in {"common.md", "reviewer.md"}:
+        raw += _legacy_device_notice(execution_context).encode()
+    return raw
 
 
 def _digest(value: bytes) -> str:
@@ -278,6 +300,8 @@ class PlannerRequest:
     feedback: tuple[dict, ...] = ()
     require_new: bool = False
     source_files: Mapping[str, bytes] = field(default_factory=dict)
+    execution_context: ExecutionContext | None = None
+    contract_correction: ContractCorrection | None = None
 
 
 @dataclass(frozen=True)
@@ -294,9 +318,12 @@ class PlannerResult:
     hypothesis_key: str = ""
     changed_execution_decisions: tuple[str, ...] = ()
     calls: int = 0
+    contract_correction: dict | None = None
 
     def as_dict(self):
         value = asdict(self)
+        if self.contract_correction is None:
+            value.pop("contract_correction")
         value["directory"] = str(self.directory)
         value["design_ref"] = self.design_ref.as_dict() if self.design_ref else None
         return value
@@ -530,7 +557,7 @@ def _evidence(items, inputs):
     return tuple(checked)
 
 
-def _decision(raw, inputs):
+def _decision(raw, inputs, *, correction_requested=False):
     if len(raw) > MAX_DECISION_BYTES:
         raise CapacityError("decision.json exceeds 128 KiB")
     value = _loads(raw)
@@ -555,7 +582,8 @@ def _decision(raw, inputs):
         if (not isinstance(item, dict) or set(item) != {"path", "before", "after", "reason"}
                 or any(not isinstance(text, str) or not text.strip() for text in item.values())):
             raise ValueError("each change needs nonempty path/before/after/reason strings")
-    if value["status"] == "replace" and (not changes or not value["changed_execution_decisions"]):
+    if value["status"] == "replace" and (not changes or (
+            not value["changed_execution_decisions"] and not correction_requested)):
         raise ValueError("replace needs structured changes and execution decisions")
     value["evidence"] = _evidence(value["evidence"], inputs)
     return value
@@ -613,6 +641,16 @@ class Planner:
                        "task/request.json": _json({"prepared_id": request.prepared_id,
                            "operation_id": request.operation_id, "version": request.version,
                            "require_new": request.require_new})})
+        if request.execution_context is not None:
+            inputs["task/execution.json"] = context_input(request.execution_context,
+                prepared_id=request.prepared_id, public_task=request.public_task,
+                target_hardware=request.target_hardware)
+            if request.current_design is None and "legacy_device_label" in request.execution_context.as_dict():
+                raise ValueError("new designs cannot use a historical Device declaration")
+        if request.contract_correction is not None:
+            validate_contract_correction(request.contract_correction, request.execution_context,
+                                         request.current_design)
+            inputs["task/contract-correction.json"] = _json(request.contract_correction.as_dict())
         # Only the controller's retained candidate sources are projected. No
         # private evaluator directory or host-relative reference grants access.
         sources = {}
@@ -630,6 +668,8 @@ class Planner:
             current = read_design(request.current_design)
             if current.manifest["prepared_id"] != request.prepared_id or request.version <= current.manifest["version"]:
                 raise ValueError("optimization must retain prepared identity and advance version")
+            validate_successor_execution_context(current, request.execution_context,
+                public_task=request.public_task, target_hardware=request.target_hardware)
             inputs.update({"current-design/" + name: raw for name, raw in current.checked.files.items()})
         return inputs
 
@@ -723,8 +763,8 @@ class Planner:
 
     def _write(self, mode, request):
         inputs = self._inputs(request)
-        prompt = (read_source_bytes(PROMPTS / "common.md") + b"\n\n" +
-                  read_source_bytes(PROMPTS / (mode + ".md"))).decode()
+        prompt = (_role_prompt("common.md", request.execution_context) + b"\n\n" +
+                  _role_prompt(mode + ".md", request.execution_context)).decode()
         extra = {"operation_id": request.operation_id, "prompt_sha256": _digest(prompt.encode())}
         writer_thinking = None
         if self.config.writer_thinking_budget_tokens is not None:
@@ -771,9 +811,10 @@ class Planner:
                     raise ValueError("; ".join(problems))
                 if "decision.json" not in files or any(name != "decision.json" and not name.startswith("design/") for name in files):
                     raise ValueError("output requires decision.json and only the complete design directory")
-                decision = _decision(files["decision.json"], attempt_inputs)
+                decision = _decision(files["decision.json"], attempt_inputs,
+                                     correction_requested=request.contract_correction is not None)
                 design_files = {name.removeprefix("design/"): raw for name, raw in files.items() if name.startswith("design/")}
-                status, ref = decision["status"], None
+                status, ref, correction_metadata = decision["status"], None, None
                 if mode == "design" and status != "replace":
                     raise ValueError("initial design must provide a complete replacement")
                 if request.require_new and status == "keep":
@@ -783,11 +824,24 @@ class Planner:
                 if status == "replace":
                     checked = self._check(attempt, design_files)
                     diagnostics.extend(asdict(item) for item in checked.diagnostics)
+                    previous = read_design(request.current_design) if request.current_design else None
+                    check_context_hardware(checked, request.execution_context, parent=previous)
                     if request.current_design:
-                        previous = read_design(request.current_design)
-                        if checked.resolved.raw_task["root"]["CONTRACT"] != previous.checked.resolved.raw_task["root"]["CONTRACT"]:
-                            raise ValueError("optimization cannot change the frozen Contract")
-                        if _execution_view(checked) == _execution_view(previous.checked):
+                        corrected = check_contract_change(previous, checked,
+                            context=request.execution_context, proof=request.contract_correction)
+                        execution_changed = _execution_view(checked) != _execution_view(previous.checked)
+                        if corrected:
+                            correction_metadata = {"kind": "execution_rewrite" if execution_changed else "fact_correction",
+                                "proof_sha256": request.contract_correction.sha256,
+                                "execution_context_sha256": request.execution_context.sha256,
+                                "parent_identity": request.current_design.identity}
+                            if not execution_changed:
+                                # A host-classified correction cannot manufacture
+                                # a new hypothesis through model-authored claims.
+                                decision["changed_execution_decisions"] = []
+                        if execution_changed and not decision["changed_execution_decisions"]:
+                            raise ValueError("execution rewrite needs changed execution decisions")
+                        if not execution_changed and not corrected:
                             if request.require_new:
                                 raise ValueError("require_new needs a changed mathematical, scheduling or pipeline decision")
                             status = "keep"
@@ -811,7 +865,8 @@ class Planner:
                 result = PlannerResult(status, ref, request.operation_id, directory,
                     tuple(diagnostics), decision["rationale"], tuple(decision["changes"]),
                     tuple(decision["evidence"]), tuple(decision["next_actions"]), decision["hypothesis_key"],
-                    tuple(decision["changed_execution_decisions"]), attempt_number + 1)
+                    tuple(decision["changed_execution_decisions"]), attempt_number + 1,
+                    correction_metadata)
                 return self._save(directory, result)
             except (ValueError, UnicodeError, SchemaError, CapacityError, ReadError) as error:
                 diagnostics.extend(_diagnostics(error))
@@ -857,7 +912,7 @@ class Planner:
 
     def qualify(self, *, design_ref: DesignRef, prepared_id: str, operation_id: str,
                 directory: Path, source: RevisionContent, source_identity: str,
-                evidence: dict) -> dict:
+                evidence: dict, execution_context: ExecutionContext | None = None) -> dict:
         """Independent model judgment of sealed-source fidelity, not a proof.
 
         The native owner supplies the actual sealed RevisionContent and its
@@ -889,6 +944,10 @@ class Planner:
             raise ValueError("qualification requires the native frozen public Task and target hardware")
         inputs["task/public.md"] = public_task.encode("utf-8")
         inputs["task/hardware.md"] = target_hardware.encode("utf-8")
+        if execution_context is not None:
+            inputs["task/execution.json"] = context_input(execution_context,
+                prepared_id=prepared_id, public_task=public_task, target_hardware=target_hardware)
+        validate_design_execution_context(artifact, execution_context)
         seeds = evidence.pop("seed_files", {})
         if not isinstance(seeds, Mapping):
             raise TypeError("seed_files must be the controller's frozen file mapping")
@@ -915,8 +974,10 @@ class Planner:
                    "target_hardware_sha256": _digest(inputs["task/hardware.md"]),
                    "sealed_files": {name: _digest(raw) for name, raw in sorted(source_files.items())},
                    "obligations": obligations, "seed_identity": evidence.get("seed_identity")}
+        if execution_context is not None:
+            binding["execution_context_sha256"] = execution_context.sha256
         inputs.update({"review/binding.json": _json(binding), "review/evidence.json": raw_evidence})
-        prompt = read_source_bytes(PROMPTS / "reviewer.md").decode()
+        prompt = _role_prompt("reviewer.md", execution_context).decode()
         directory = self._intent(directory, "qualify", inputs,
             {"operation_id": operation_id, "prompt_sha256": _digest(prompt.encode())})
         if (directory / "result.json").exists():
@@ -1017,7 +1078,8 @@ class Planner:
 
 
 def coder_context(design_ref: DesignRef, prepared_id: str, episode: int, seed_identity: str,
-                  *, next_actions=(), comparison_target=None) -> str:
+                  *, next_actions=(), comparison_target=None,
+                  execution_context: ExecutionContext | None = None) -> str:
     artifact = read_design(design_ref)
     if artifact.manifest["prepared_id"] != prepared_id:
         raise ValueError("Coder design belongs to another prepared Task")
@@ -1027,6 +1089,14 @@ def coder_context(design_ref: DesignRef, prepared_id: str, episode: int, seed_id
                "episode": episode, "seed_identity": seed_identity,
                "closure_digest": artifact.manifest["closure_digest"],
                "planner_next_actions": list(next_actions)}
+    execution = ""
+    if execution_context is not None:
+        if (not isinstance(execution_context, ExecutionContext)
+                or execution_context.as_dict()["binding"]["prepared_id_sha256"] != _digest(prepared_id.encode())):
+            raise ValueError("Coder execution context belongs to another prepared Task")
+        binding["execution_context_sha256"] = execution_context.sha256
+        execution = "\nFrozen host execution context:\n" + execution_context.as_bytes().decode() + _legacy_device_notice(execution_context)
+    validate_design_execution_context(artifact, execution_context)
     comparison = ""
     if comparison_target is not None:
         from aka.workflow.light.measurements import KERNEL_ID
@@ -1043,5 +1113,6 @@ def coder_context(design_ref: DesignRef, prepared_id: str, episode: int, seed_id
     # frozen design as well so the context never depends on a mutable checkout.
     return (read_source_bytes(PROMPTS / "coder.md").decode() + "\n\nBinding:\n" + _json(binding).decode()
             + comparison
+            + execution
             + "\n".join("\nFrozen " + name + ":\n```\n" + raw.decode() + "\n```\n"
                          for name, raw in sorted(artifact.checked.files.items())))

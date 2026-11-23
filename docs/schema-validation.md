@@ -1,123 +1,64 @@
 # Schema 实施与运行验证记录
 
-当前阶段：五轮实现及清理已提交，并持续修复真实实验问题。vector 已完成首个四 Episode 窗口、再次 optimize 并发布v3，自动进入第二实现窗口；GEMM 已发布初版 Schema，自动进入首个 implement。GEMM完整重复链及两条链的多日稳定性仍未验证完成。
+记录截至 2026-11-23。五轮实现、清理和后续已发行修复均已提交；vector 与 GEMM 两个原根已各一次同根接续到 `789c40f`，保留快照确认实际 owner 在运行。本轮资格反馈、执行事实纠错及历史 Device 标签兼容已通过最终源码独审，仍为**未提交候选，待 commit、发行及实测**，尚未用于 live。有效重复进展及连续 72 小时观察仍未完成。
 
-## 正式目标
+## 目标与证据边界
 
-- L20D 已有同源 SOTA kernel + Schema：optimize → implement 持续迭代。
-- L20D 无 SOTA：design → implement → optimize → implement 持续迭代。
-- 使用 AKA_experiment 核实的 Claude/Qwen 配置，正式实验不测 extract。完成代码检查、清理和 commit 后开始，先验证有效轮次，再观察连续多日运行；未观察足够时长不宣称多日稳定。
+已有同目标 SOTA kernel + Schema 时，持续 optimize(E) → implement(D)；无 SOTA 时，design(C) → implement(D) → optimize(E) → implement(D)。C/E 负责设计，D 忠实实现冻结设计，让 kernel 与 Schema 随证据共同演进。关闭 Schema 保持传统 AKA。正式实验使用核实的 Claude/Qwen、projected/bwrap、LegacyExecutor 与 L20D，不测 extract。
 
-## 已发现与处理
+本记录只保留问题、修复和关键证据。详细日志、各次失败原件、原生回执、费用与 hash 均在外置根：
 
-| 问题 | 处理与当前证据 |
-| --- | --- |
-| 旧方案按 Codex/private/Gateway 设计，与实际实验配置不同。 | 核实为 Claude、`qwen3.8-max[1m]`、bwrap/projected、LegacyExecutor；实现沿该路径，配置值及凭据从私有实验配置取得。 |
-| GEMM 的现有 Schema 属于 Blackwell，不能配 L20D 晋升 kernel。 | 排除该配对，另核对已有同 GPU 来源；无 SOTA benchmark 本身仍可使用。 |
-| 材料清单无差别包含业务模块，业务编辑会作废材料身份。 | 清单收窄到语言、材料、prompts、NOTICE；业务编辑不再改变 release，相关回归通过。 |
-| 只按 session_id 去重可能漏计真实新调用。 | 使用持久 operation + attempt 标识；同次缓存复读幂等，同会话标识的新调用分别计量。 |
-| 尚无设计符合性检查会让候选永久 unknown。 | 绑定关键义务与封存源码，保留原生检查；必要项复用现有 Agent 做计量的只读审阅。结果是检查/模型判断，不能冒称形式证明。 |
-| 短演示额度或同图停滞会误结束长期优化。 | 明确持续模式无默认短总上限；单调用和窗口仍有界，同图停滞交回 Planner。显式用户有限预算仍有效。 |
-| 物理作业终态不一定代表原 Experiment 已结算。 | E/finish 前复核原 owner 和 Experiment；未知阻断新增副作用，恢复查原操作，不能重开任务掩盖未决状态。 |
-| 共享临时测试环境中的 pytest 在运行间消失。 | 改用本任务专用 CPU 环境，统一由单个代理管理依赖；既有源代码不受影响，相关组合在专用环境复验。 |
-| 参考实验的测量并发数来自外壳，原生入口未提供对应配置。 | 补显式可选配置并检查真实Legacy服务的传递；未配置保持原默认，正式实验设置1。 |
-| Planner 的 next_actions 未传 Coder，且优化输入缺少实际源码/未晋升测量内容。 | 已将动作落到实现上下文，并提供受限可读源及绑定当前候选的事实摘要；独立回归通过。 |
-| lost-return 恢复时新诊断改变了原请求，导致 intent 冲突。 | 已持久冻结每次请求，恢复同操作不重造输入；独立回归通过。 |
-| finished 根可能跳过身份检查，active time 恢复可能重复扣账。 | 已补纯读取身份核验与已计耗时增量结算；独立回归通过。 |
-| Episode 内重试直到结束才同步 token，显式有限根预算可能多发请求。 | 已将原生已知消耗同步到下一次准入前；7-token反例回归通过，仍不承诺精确控制供应商内部计费。 |
-| 原生准备只返回增量，真实已就绪Task的增量为空，Planner会收到空Task。 | 改为合并原生已批准公开文件与authoring增量；真实provider路径源码及最终安装包回归通过，worker私有依赖没有进入公共视图。 |
-| 实验外壳专用的评测器环境变量在独立AKA不生效，空Task需求还会覆盖env。 | 外置启动配置改用原生requirements文件，并明确patch problem.worker_requirements；两数据集的normal/ABBA实际参数均核到严格wheel SHA pin。真实远端安装仍待正式实验验证。 |
+- `R=/home/shaohanyong.shy/aka-schema-l20d-20261122`：早期诊断和两条旧 503 unknown。
+- `N=/home/shaohanyong.shy/aka-schema-l20d-a94-validation`：后续发行、两条真实原根及本轮审查/CPU 材料。
 
-## 代码级证据
+压缩仅涉及本文，不删除或改写上述失败原件。CPU fake 不能证明真实模型效果、GPU 性能或长期稳定；不同批次与快照的测试数、调用数和 token 有重叠，不相加作为唯一用例数或供应商账单。部分历史 usage 不完整，未知费用仍保留未知。
 
-- 第 1 轮：语言/材料 77 项 CPU 检查通过；原生接口与环境/off组合 45 项通过，另旧 Episode/seed/off 53 项通过。
-- 第 2 轮：Planner/材料/语言联合 111 项通过；控制器/原生组合 65 项通过，另恢复定点检查通过。CPU 原生链已跨过 36 Episode / 9 窗，编号与账目保留。
-- 第 3 轮：阶段、控制器、Planner、来源、输入、材料、语言与原生/off相关大组 270 项通过，另 raw 异文恢复保护通过；公开输入保留来源与规格迁移差异。
-- 第 4 轮：最新四包与工作区逐字节一致，143项材料完整；独立安装环境14项入口/功能/off检查通过。当前未出现KS运行、源checkout或网络依赖。
-- 第 5 轮：304项广域、30项定点与25项独立安装检查通过；最后公开Task投影修复后补source/installed各1项定点验证，并再次核对四包源码及143项材料。此前组合未在最后局部修正后全部重跑，不能把数量相加宣称更大的完整套件。
-- 真实私有配置投影检查：两例公共Task/硬件及公开文档未包含被核查的秘密原值，worker私有快照保留必要的严格依赖pin。未调用模型/GPU。
-- 清理了48项历史讨论/交接/过时文档，保留正式指南、必要出处与本记录；提交前仅修尾部空行并重生成清单，语言/材料77项复验通过。
-- 不同测试组合存在重叠，不把上述数量相加作为唯一用例总数。CPU 假后端结果不证明真实模型、GPU性能或多日稳定性。
+## 已提交实现与发行验证
 
-## 提交后诊断
+五轮实现覆盖语言/材料、Planner、原生 Episode 控制、恢复与预算、公开装配及独立安装；CPU 原生链跨过 36 Episode / 9 窗。第 5 轮广域 304 项、定点 30 项和独立安装 25 项通过，最后公开 Task 投影修复另在 source/installed 各补一项。此前大组没有在最后局部修正后全部重跑。
 
-- 外置运行根：`/home/shaohanyong.shy/aka-schema-l20d-20261122`，安装035e932对应四包；Claude/Qwen、两套AKA自有输入、严格评测器wheel pin及共享原生GPU准入已核查。未修改或接管既有实验。
-- 2026-11-22 12:26 UTC，vector诊断首次启动在材料快照发布时退出：FUSE硬链接删除别名后仍返回nlink=2，触发不可变文件校验。创建的owner/worker均已退出，零模型、零GPU调用，未生成Task/V0/run-state；原失败前置目录和日志保留。
-- 已复现该文件系统行为；产品改为优先使用原子noreplace重命名，保留所有原有校验。相关CPU 130项通过，真实FUSE资源快照、同内容重放、内容冲突、真硬链接拒绝及并发检查通过。SIGKILL后即时恢复仍可能因该挂载的短暂时间戳漂移被严格拒绝，原状态保留，经独立稳定性/内容核验后同请求恢复成功；没有弱化校验。修复提交与续跑结果后补。
-- 私有诊断曾因将JSON字符串误当集合而可能输出敏感配置字符；已停止该输出方式并采用类型断言/安全字段白名单，未写入源码仓库。记录不保留原值。
-- `51e8549` 显式继承安装后，2026-11-22 12:48 UTC vector新V0在L20D完成：3形状、6正确性case PASS，当前几何均值7.648663838微秒；原job已停止且cleanup清零，实际评测器版本/哈希匹配。随后开始真实Claude/Qwen optimize调用。
-- 准入漏点已确认并修复：SupervisorRuntime/SharedMeasurements持有scope安装前绑定的Legacy副本，V0派发未计入根。绑定族现共享可关闭scope attachment；退出后旧引用保持拒绝，实际派发前执行准入。最终新增8项、控制器/native 47项、公共入口/off 5项检查通过。
-- 准备反馈现读取原terminal attempt的真实assessment，并绑定原准备源码；原结果的comparability unknown/environment null保持。显式修复可依据唯一原Experiment/physical attempt/Job回执记录一次historical-unadmitted消费更正，不造旧admission，不赠送已用额度；重复幂等，证据不全不猜。
-- 本任务已于12:52 UTC受控中断首个optimize，所有本任务进程退出，无新D/GPU；原调用保留unknown/KeyboardInterrupt与267.184544秒，V0原owner终态。后继版本需核原owner证据并明确resume_after_repair，旧快照/已用预算不清零。
+`035e932` 已移除 KernelSchema 子模块依赖，迁移语言、规范和所选材料为包内数据，并清理 48 项历史讨论/交接文档。固定来源与授权边界保留在 [SOURCES.json](../src/aka/workflow/schema/assets/SOURCES.json) 和 [NOTICE.md](../src/aka/workflow/schema/NOTICE.md)；未把上游无根许可证声明解释为新的许可。运行与构建无需上游 checkout。
 
-后续补充真实轮次、正确性/性能、停止或恢复原因与观察时长；凭据和原始大日志不入库。
+提交后曾发现 `progress.py` 漏包，改为动态收集 Schema 根目录业务模块并增加缺漏回归。后继四包均走实际 sdist → wheel → 独立非 editable 安装，并核对源、包和安装内容。到 `789c40f` 的闭包为 799 文件、541 Python 模块、143 Schema 材料。此前 `e6f4866` 安装版 187 项及独立安装 57 项、`a21a952` 相关证据仍保留，未冒称在 789 全量重跑。
 
-### 真实 E/D 与 Dev 边界
+`789c40f` 的实际最终 prefix 验证包含进程 helper 的正常退出、非零退出、信号、超时和子树回收，以及三种公开装配和原根接续检查；两条真实新 Coder 已执行工具，helper 均带 `-B`。每阶段完整 3069 项 prefix 内容/权限/链接清单一致，未靠删除缓存或改 seal 获得通过。详见 N 的 `qualify-and-switch-789.md`。
 
-- b3508c0 显式恢复后，原中断调用按证据结算、原V0漏计仅更正一次，checkpoint未改/V0未重测。optimize正常发布设计v2，真实Coder收到固定root/dispatch/设计身份与Planner动作。
-- vector新候选完成3形状、18 correctness cases及每形状20 performance samples；当前测量7.1733055796微秒，但comparability unknown，不能称正式提升。eval与disassemble原作业均已停止/清理完成；尚未资格晋升或结束Episode。
-- Dev请求继承3600秒而后端上限1800，在本地构造提交参数前失败，却保留unknown并阻断后续。修复操作默认限额及结构化not_submitted事实；原owner可凭精确旧记录/停止/调用顺序证据显式结算单attempt，Schema核同原permit，不退款，不把无JobRef等同未提交。新15项、既有native组合38项及控制器等60项检查通过（组合重叠）。
-- 无SOTA GEMM的新V0已通过10形状、60正确性case，目标L20D和评测器身份吻合，准入计量正常。其design两次仅thinking耗尽32000输出且无候选；原调用已受控停止并留存成本，准备同Qwen/同任务/同验收、仅Planner effort改high的独立配置试验。旧根不改，新试验调用/派发额度扣除旧根已证实消费。
+## 真实运行已经证明什么
 
-### 审查协议与有效进展
+| 路径 | 已保留事实 | 当前限制 |
+| --- | --- | --- |
+| 有 SOTA 的 vector | 原根发布 v2；首个 D 完成资格与正式 acceptance，候选 7.2518 μs、基线 7.5445 μs，原生聚合改善约 4.04%。同 v2 四 Episode 窗口结束后自动进入 E，发布精确 parent 的 v3，再进入 D；后续保留快照已至 v4。 | 首个 optimize → D 窗口 → E → 新版本 → D 已真实走通。后续资格 pass 而 accepted=false 的候选保留为 draft，champion 不变；探索 ABBA 和跨记录 unknown 不能冒充正式提升。尚未完成 72 小时观察。 |
+| 无 SOTA 的 GEMM | 经多次 writer 失败后发布 design v1，原控制器进入多个 D。首个新源全 Task Eval 为 10 shapes、完整/PASS、193.3558 μs。Episode2 实际提交 candidate_ready，但独立资格为 fail，绑定其精确 sealed source，未晋升；789 后继继续 D。 | 尚未证明无 SOTA 的完整 design → D → E → D 有效重复链。原 v1 的 Hardware/Tile_pipeline fail 与费用保持；Eval PASS、正常退出和 candidate_ready 均不等于 Schema 符合性。 |
 
-- `246ba5c` 显式继承安装后，旧本地未提交记录依证据结算，派发和调用消费保留，原 V0 未重测。真实 Dev 使用1800秒上限成功，Eval仍保留3600秒。
-- vector 的完整同分配 ABBA 原生 gate PASS：候选7.1325415954微秒、原基线7.5162039397微秒。后续 correctness-only 也通过。跨记录环境身份仍 unknown；这些结果尚不等于正式晋升。
-- 首轮生产策略审查接受，但 Schema reviewer 的3条 change_evidence 使用嵌套对象，未满足 source/start/end/claim 协议。原输出保留，规范结果为 unknown，未晋升；控制器自然进入第二 Episode。不能把原始未验证的 pass 转成有效结论。
-- 进展消费者仅读聚合结果、忽略 terminal attempt，并误把完整原生 ABBA 当作部分测量，导致漏认真实进展。修复复用原生记录投影及完整 Task/源码/计划绑定；区分首次有效测量、同次 ABBA 和须已知环境的跨记录比较，unknown 不冒充停滞或进展。相关136项通过，补充 Coder 确定性接线后最终82项通过（组合重叠）。原始未晋升源码只读取出及完整 ABBA 请求构造已验证，未新增 GPU 调用；旧 unknown 审查结果保持，运行安装尚未升级。
-- GEMM 的 high 独立试验真实请求已核实，V0通过10形状、60 correctness cases；截至15:47 UTC仍未产出设计，已两次 thinking-only 达到32000输出。调低 effort 尚未证明解决问题；仍需有效设计与后续 D/E 实测。
-- qualification 现复用原生调用/留存路径，对格式无效的完整输出最多追加配置允许的修正次数；合法 fail/unknown、调用失败及未知 owner 不触发格式重试。reviewer 补了扁平 change_evidence 示例，旧终态不改。相关92项和最终64项 CPU 组合通过（重叠），涵盖计量、预算、丢返回恢复、输入身份及保留文件损坏。
-- GEMM high 至15:54又发生第三次 thinking-only 截断，仍无候选。max/high 输入相同，约26.7万字节中85%是规范，截断思考未进入后续请求。design 提示仅补充“简单完整初版尽早落稿→check→按诊断完善”，保留所有义务和验收门；与 reviewer 统一更新 release，真实效果待新版本试验。旧根的封存调用不能悄悄换提示。
-- 独立 CPU probe 走完“坏格式→合法 pass→原生资格门→归档→进展消费”，1项通过；保留旧 diagnostics 不会否决修正后的合法结果，两个 attempt 独立准入和计量。此证据不改变真实旧 Episode 的 unknown。
-- 旧运行已受控停止、原调用经 owner API 结算，消费未变；原进程全部退出，相关8个历史 GPU jobs 均终态且清理完成。`fd94dd2` 显式安装后，实际 import 检查发现新 progress.py 漏出发行包：构建脚本的 Schema 模块白名单未更新。文件一致性检查只覆盖已打包项，未能发现遗漏；失败发生在新 Task/模型/GPU 启动前。
-- 构建改为只自动收集 Schema 根目录的业务 Python 模块，冻结材料清单和分包边界不变；补了实际漏包与未来新增模块两项回归，相关80项 CPU 检查通过。四包实际 sdist→wheel 全量核对798源文件、540 Python 模块无遗漏/重复；独立非 editable 安装在禁用源码读取和 PYTHONPATH 后导入及 continuous 组合通过，全部798安装文件一致，依赖检查通过。共享实测环境后继安装仍需单独核验。
+2026-11-23 05:59:45 UTC 的保留快照确认两条 789 owner 身份正确、零自动重启：vector 已至 v4 的第三窗口，GEMM 仍在 v1 的首个 D 窗口；这不是实时状态声明。两条 789 接续均先由原 owner 停止并真实结清，再经公开 `driver_factory` / `resume_after_repair` 各启动一次；root/config/Task/prepared、旧调用和预算保持。vector 继承原 Episode 余额，GEMM 只为下一 Episode 分配原合同额度，未重置已用预算。运行中的 789 不包含下述未提交修复，不能把只读原件验证写成已经向 live Coder 送达或完成新版本纠错。
 
-### 持续配置与提交故障
+## 真实问题与已发行处理
 
-- `f205518` 共享安装核验通过。安装环境的进展/审查/材料组合先通过53项，随后 FUSE 上新写模拟提示的负例触发文件变化保护；失败原样保留，同安装字节在 `/tmp` 定点及剩余37项通过，未改保护逻辑。Dev/准备23项及实际文件、组合、依赖固定、安装继承检查通过。
-- 16:20 UTC，两个明确的新 continuous 根各启动一次：vector max/max 使用原配对，GEMM high/max 无 SOTA；保留单调用、窗口与重试边界，总额度无短诊断上限。旧消费和原根保留。两者在新 V0 提交时均收到 HTTP503/tengine HTML，0模型调用、各1派发/1物理尝试，原进程已退出；无 JobRef，远端状态保持 unknown，尚无新 V0 或有效持续轮次。
-- 新旧成功/失败请求的任务参数、硬件、超时、依赖、网关设置及执行器版本已核对；仅等内容 requirements 路径及线程/工具标识变化。服务列表暂未找到对应请求，不能据此把 unknown 改成未提交。
-- 发现 SDK 在提交副本中生成幂等 key，而原生 inline Eval 没有持久保留。修复仅针对 recorded prepared Eval/run/ABBA：执行前用现有不可变 artifact 保存 key 与原请求、超时、环境绑定，并通过 SDK 既有 raw submit 传递。14项故障和67项既有 CPU 回归通过；旧未知尝试不能补造 key，也没有新增自动重发。发行包验证和实测仍待完成。
-- 一次子代理诊断误输出含签名依赖地址的嵌套字段，已停止该输出方式并告知用户；后续只输出明确的叶子字段、哈希及等值结果，原值未入库。
-- `64866b3` 独立发行检查发现真实 V0 链还有漏接：Legacy 非 SSH 分支未将已持久化 key 注入 launcher payload。仅扩展既有 prepared_payload 接线并新增完整 V0→launcher→SDK raw submit 回归；源码82项、独立非 editable 安装83项通过，均0 skipped。原失败安装用例也原样通过，798文件在 source/sdist/wheel/installed 间一致，无真实网络调用。共享运行环境仍为 f205518，旧503状态未改。
-- 同一活 Legacy 调用的有限恢复已实现：需显式 verified URL 和 idempotent_replay 开关，固定原 key/body/route/AK，最多额外两次且每轮原准入扣账，保留唯一截止时间及失败原件；同原作业终态证据才能结清关联 unknown。默认关闭，不增加跨进程恢复或通用 scoped replay。最终120项源码检查通过（38新+82既有），独立反例与定点审查通过；安装版及真实新调用仍待验证。
-- 独审修复了五项初稿缺口：顶层禁止重放策略、原错误字段完整留存、第二次存档失败不丢已知 JobRef、损坏回执禁止重试、慢准入/启动/存档不延长截止时间。实际所选服务0.14.37自身文档支持同请求同 key 重放；普通列表明确隐藏归档作业，因此旧两条无 key 的 unknown 仍需服务关联证据，不能由本修复解锁。
+| 问题 | 修复与证据 | 保留边界 |
+| --- | --- | --- |
+| FUSE 发布/严格文件校验、材料身份和业务代码混绑、业务模块漏包。 | 原子 noreplace 发布、材料清单限定到材料/prompts/NOTICE、动态打包及独立安装闭包检查；真实 FUSE 与安装路径验证。 | 初次失败及短暂时间戳漂移原件保留，没有取消硬链接或不可变文件校验。 |
+| V0 准入漏计、已准备 Task 投影为空、终态 attempt 反馈漏读、恢复输入漂移。 | 原生绑定族共享准入、合并完整公开 Task、消费原 terminal evidence、冻结请求和幂等结算；补原生/公开入口反例。 | 只对有据旧执行记一次 historical-unadmitted；不造旧准入、不退款，不把 worker 私有依赖放进 Task。 |
+| Dev 默认超时超后端上限；物理 unknown 下相同完整请求可能被另一请求再次提交；候选源拒绝原因丢失。 | 默认 Dev 1800 秒、精确原 owner 未提交结算、完整摘要锁与原持久记录检查、有界可修源反馈。 | 保护限于相同 namespace/完整请求；独立 Eval 可继续。旧 unknown 不据缺 JobRef 或控制面 failed 自动结清。 |
+| V0 提交 503；SDK 幂等 key 未贯穿原生 launcher。 | 持久保存原 key/body/route/timeout 并贯穿 SDK；仅显式 verified gateway 的同一活调用可有界重放，逐次准入计费。 | R 中两条无原 key 的 503 尝试仍 unknown，列表未找到不等于未提交；新成功运行不结算旧费用。 |
+| host 变量误入 worker，网关拒绝并含模型鉴权配置。 | host/worker 在身份冻结前分离，worker_environment 默认空，保留显式工具 env；后继真实 V0 的目标、输入、依赖 pin 与 evaluator 身份已核实。 | 旧拒绝请求、key 与消费保留；不能据接口断言服务未记录原请求。 |
+| GEMM 多次 thinking-only 截断；固定 budget 与 effort 同发被 Qwen 拒绝。 | 先落完整草稿再 check；writer-only 可选预算；固定模式明确禁当前模型 effort。真实后继 enabled/8192、max32000、无 effort 被接受并使用工具，最终发布 v1。 | 默认/其他角色不变。旧 thinking-only、HTTP400 和有界重试的原输出及消耗保留，不把离线 wire 检查当 provider 接受。 |
+| 资格输出格式无效、进展漏认完整 ABBA、D 将较慢实现直接回退。 | 有界且计量的格式修正；完整 Task/source/原计划进展绑定；明确 D 完成目标是忠实实现，完整 Eval 后可 candidate_ready。 | 合法 fail/unknown 不重试洗判；资格、正确性、性能与晋升分开，缺回执不推断未申请。 |
+| a21 helper 未继承 `-B`，封存 prefix 新增缓存。 | 原缺陷在真实 namespace 重现，789 helper 增加 `-B`；最终安装及两 live 工具调用后的完整 prefix 检查无新增缓存。 | 旧 cache/seal 原件保留，没有热补旧安装或删除痕迹。 |
 
-### 独立发布验证与 worker 环境
+早期诊断曾误输出含签名依赖 URL 的嵌套字段，worker 边界问题也已向用户披露；本轮集成探查再次发生同类 stdout 偏差并已报告。原值不入库，失败日志在外置根保留。后续采用类型检查和最小字段输出；本文不声称所有历史 stdout 或网络检查全程零偏差。
 
-- a94 四包实际 sdist→wheel→独立安装验证通过：799文件/541模块一致，安装版120项、7独立反例及实际 light-sandbox/bwrap/projected 三配置装配通过，0 skipped。旧 f205 安装和两条 unknown 保留；新根 `/home/shaohanyong.shy/aka-schema-l20d-a94-validation` 明确作为新版本完整实验，新增消费另计。
-- SDK 说明 unknown 归档可能释放网关预约，因此补查实际物理分配层。服务正式 overview 的 L20D backend 集合只有 ray，与唯一 L20D resource 组交叉一致；结合其原子分配合同及启动前 fresh primary/队列/slots/cleanup 检查，满足新实验隔离门。旧 unknown 未因此结算。
-- 18:04 UTC vector 唯一启动，V0 收到 HTTP400 invalid_source：worker env_vars 误带235项宿主变量，网关校验拒绝，原调用已 terminal/settled/not_submitted。0模型、1派发、0 JobRef、0/3测量；GEMM未启动，没有重复提交。
-- 模型鉴权配置也被误带入已拒绝的网关请求，已告知用户；原值未在对话输出或入库，原始证据只私有保留。不能据现有接口断言网关未记录请求。原失败的 Agent/Planner 反馈投影未检出已核查的鉴权值。
-- 修复在身份冻结前分离 host 和 worker：新增默认空且冻结的 worker_environment，保留现有显式 --env、transport 本地设置及原依赖/硬件/形状/重复测量/ABBA语义；不复制完整服务端 allowlist，不重写旧正文或 key。最终177项 CPU 检查、独立实际 live SDK 消费路径审查通过，真实请求尚未重试。
+## 本轮闭环候选：修复与证据
 
-### d3 实测与规划后继
+| 问题 | 最终候选行为 | 证据与状态 |
+| --- | --- | --- |
+| 原 GEMM 的具体资格 fail 没有可靠进入下一 D/E。 | 原生 archive 中的原判定按 Task/design/实际 sealed source/context 精确投影；D 只取当前 seed，E 明标历史 reviewed source。给出有界原因、原义务、可核 hash/行号和内联引用；旧 row 不改。 | 红/绿 CPU 原生 seal → review → archive → settlement → 新 prompt/E 链通过。真实旧 GEMM 只读视图保留 Hardware/Tile_pipeline 两项 fail 及引用；加入 legacy 标记后的 D/E 长度为 5500/7814 字符，未向 live 注入。 |
+| C/E 不知道执行框架和可信架构/工具链，旧 Contract 的事实错误又被整体冻结。 | 新 context 标记 selected framework 和事实来源；可信 TaskConstraintReview/RetainedJobEvidence 经现有 embedding 接入。只有 Architecture、Stack.Language、Stack.Toolchain 可按精确 proof 形成新版本。纯事实纠错不重置 hypothesis、draft、progress、窗口或预算。 | 实际 Planner/native owner/checker/publication 与公开 factory 同根接续 CPU 链通过；模型自授权、错 Task/source/route/policy、越叶更改均拒。旧 v1/fail/cost 保持。详见 [工作流边界](schema-workflow.md#frozen-execution-facts-and-contract-corrections)。 |
+| 独审发现旧根首次新 D 的 context 未持久继承，下一 D 会再次丢反馈；真实 nvcc banner 又使 context 构造失败。 | 先用当前 D 实际 binding 筛反馈，再保存并复用冻结 context；受限解析标准编译器版本，未知 banner 保守 unknown。统一反馈选择器和 publication context 原件读取，单一可选原件入口。 | 独立红反例保留，修后 legacy D → 新 D → 下一 D、磁盘恢复和真实 native provider 格式的 CPU 回归通过；重放不重新 discovery。没有新增状态机或历史账本。 |
+| vector 历史 Device 为 `AKA L20D`，实际 target 为 `L20D`，阻断合法后继纠错。 | 仅可信 host 明确声明的旧锚点及其逐字同标签谱系可保留该显示值；核完整 Task、target、原 operation/parent/字节，canonical Device 仍为 L20D。new C 不获 alias 许可，Device 不可改。 | 实际 vector v4 沿已审阅 v3 锚点、以及 GEMM v1，各用自己的 retained Job/native owner 只读通过 successor/proof/checker/Contract 门。只在内存形成候选，0 publication；旧 Task/design/fail 不变。 |
+| 同事实的新证据 digest 可能使 keep 循环，或把旧判定移到新 context。 | 同事实 keep 保 parent 原 context 给 D/reviewer；事实冲突需有据新版本。旧 source/context 摘要不适用于新 source/context，旧请求恢复只读原字节。 | same-facts keep、新事实 correction、旧摘要错绑定、导入谱系拒绝及 legacy keep → D 的定向 CPU 链通过。 |
 
-- d3 独立发行177项及实际 SDK 消费、目标 sandbox 三组合通过。同路径继任安装后，原 vector 根恢复，旧400正文/key/派发1保留；新正文仅 worker env 从235项变空，生成新请求/key。外部恢复外壳的延迟状态加载错误在产生新模型/GPU前修复并保留失败记录。
-- 新 vector V0 `ev_24d44c678a37` 三形状通过，7.6914407555微秒；GEMM首次新 V0 `ev_d6ec1a86783d` 十形状通过，7755.3782956425微秒。实际 L20D/1 GPU 与评测器模块及build身份均匹配，各自进入 optimize/design，没有用旧测量当新证据。
-- vector Planner 一次32000截断后在原调用内发布 design v2。新候选650fdc79…完成普通Eval、同分配ABBA、NCU和全量correctness-only；冻结root/dispatch/六条动作确实交给Coder。独立Schema qualification为pass/qualified/substantive_change，绑定六项义务及同一封存源码。
-- 20:41 UTC正式acceptance `ev_62214555f617` 三形状通过，候选7.2518156547微秒、基线7.5444927884微秒，原生聚合提升4.03591525%。Episode1 accepted且归档，champion/tested/sealed同源，六项progress正确记录；第二Episode自动承接该champion和同design v2。尚未观察新E发布，不等同多日稳定。
-- 一个Dev作业控制面failed但physical execution_state unknown/replay_policy never。后续另一个Dev仅新增日志文件、实际脚本/命令相同；原自动replay gate仍拒绝，跨新request的replacement效果检查尚待核实。两原记录保留，不将控制面终态当物理停止，不把所有failed一律封锁不同测量。
-- GEMM design连续三次thinking-only各32000、无draft/check；原调用受控停止并由原生owner接口结算，保留1 Agent/1 dispatch/2576.687秒及部分usage，未冒称零成本或设计成功。V0与原root保留。
-- 规划后继让中间starter/current-closure草稿更早落盘并check，最终完整性及新假设门不变；可选writer_thinking_budget_tokens仅design/optimize，默认None。显式启用时绑定具体Claude模型、有效设置及来源哈希，只覆盖当前session，Coder/reviewer/extract不变。修复了Home设置和primary agent可改变模型、大小写cap selector等反例；普通现有设置仍支持，无法证明的动态选择明确拒绝，不禁用CLI设置来源。
-- 修订相关187项、最后66项预算检查及14默认设置来源CLI用例通过（组合重叠）；七个原审计反例在intent/admission前拒绝，主代理另复验最后六项定点通过。当前真实GEMM配置只读校验支持8192；上述CLI使用隔离loopback假服务，真实provider接受度、工具能力和设计效果仍待后继实测。
-- eddc8cb 后继四包及独立安装194项、14默认来源CLI用例、7原反例、实际sandbox三配置通过；实际新解释器导入及原root/Task/十形状/V0/材料/消费保持已核。GEMM独立版本安装未改运行中的vector d3；原材料只作为冻结数据复用，未引入旧代码。
-- 21:28 UTC同根后继实际发送 enabled/8192、高effort、32000，Qwen以HTTP400 InvalidParameter明确拒绝 thinking_budget 与 reasoning_effort 同时设置。框架三次有界尝试全部结算，新增3 Agent/0 GPU派发/约11.084秒，未产设计；不把离线wire通过当provider接受。旧调用、V0和原账均保留。
-- 协议修复仅在writer固定预算模式对当前模型追加 -effort，保持非零budget/model/输出上限，其他角色/default不变；mode=fixed_budget_without_effort进入新intent及writer capture。181项CPU、19个完整原CLI参数的隔离场景和7个旧冲突门通过；真实provider尚待验证。单独省略CLI effort参数仍会继承用户effort，故不能替代此明确模式。
-- vector继续同design v2四Episode窗口：Episode2新CCC候选完整Eval通过，但pivot/source-not-qualified，未晋升；Episode3仍实现中。冻结hardware.md仅声明L20D，root/dispatch明确微架构未知；实际sm_103/(10,3)为新增观察，无与冻结其他SM/架构冲突。
-- Dev19→20出现完整相同冻结request/digest、不同request_id的新提交，原Dev physical unknown且replay_allowed=false；replacement效果审查为明确待核。另Eval22新候选被HTTP400 invalid_source拒绝，原cause为Forbidden name: getattr，但实际Coder反馈丢失此可修诊断、candidate_repairable=false。两问题已保留原证据，未通过修改状态掩盖，待单独修复。
-- `65d427c` 四包及独立安装验证通过：181项相关检查、19项实际CLI离线场景、7项旧冲突反例和799文件闭包一致。22:43 UTC GEMM使用独立安装从原root恢复至新操作a6，原V0、历史调用与消费保留；实际请求enabled/8192、max32000且无effort。22:44 UTC真实Qwen返回tool_use，首批5个Read均成功，无原参数冲突；这证明provider接受与工具可用，尚不证明设计发布或完整循环。
-- 源策略反馈修复仅改已有分类边界：明确候选源的标准SDK拒绝进入可修复反馈，未知细节使用固定提示；reference/env/混合归属不误判，不回显私有原文。相关111项CPU检查通过，原Eval22只读投影现给出`Forbidden name: getattr`，仍为未提交、无GPU数值，原记录和receipt摘要不变；运行安装尚未更新。
-- Dev相同完整冻结请求现在复用非阻塞文件锁，并在登记/新派发前检查原持久记录；未决替换返回有限Coder反馈，独立Eval仍可继续。旧版实际接线反例会派发两次，新版只派发一次且保留原记录与消费。相关109项CPU检查、目标挂载跨进程锁及真实Dev19只读检查通过。独审发现并修复了同原Job已明确停止后仍被历史unknown误封的问题；最终17项Dev回归通过。保护限于相同namespace/完整摘要，不声称识别改动输入后的所有语义重复；尚未部署到live运行。
-- `c476c3f` 四包及独立安装闭包通过，相关168项安装版回归、最终安装51项新增回归通过，无skip。后继准备发现既有vector恢复门误要求原已计费的`not_submitted`准备记录拥有JobRef；原失败、后续成功V0与各自permit均完整保留，后续修复如下，未切换live安装。
-- 23:19 UTC vector四Episode窗口完成（1次accepted、3次pivot），原控制器自动启动下一次optimize。实际新请求及文件绑定v2 Schema、champion/working draft650fd…、tested candidate8b9f…与最新负改善反馈；writer实际读取了这些输入。8000字符反馈只保留最近Episode，但仍有原milestones和comparison target，不能宣称四轮完整历史均入模。
-- 23:40 UTC GEMM原writer正常退出，初版v1正式发布：identity`9b8e2c07…`，两文件、0error/7warning，同安装`read_design`核验完整。原supervisor自动进入window1/Episode1 implement，新的Qwen/max Coder绑定v1与原V0 seed304a60ad…并完成首批工具调用，未重测V0。原writer及所有失败前驱消费保留；尚无首个D验收或后续E证据。
-- 23:45 UTC vector原E正常退出并发布v3（identity`bb2f1967…`），原生完整性验证通过；parent精确绑定v2、冻结Contract相同、execution view确实改变。原控制器自动进入window2/Episode5，新Coder绑定v3与champion650fd…；已有SOTA链的optimize→implement→optimize→implement已在原根真实走通，尚不代表多日稳定。
-- 准备恢复门现按原native/physical身份、scope和已结算permit核对有据未提交记录；新普通recorded Eval补最少身份投影，旧记录不回填。独审发现并修复了原Job查询的多回执误封及保存后字典顺序依赖，并兼容原有同活keyed多permit成功链。单POST+原Job查询仍计1派发，两POST同key恢复仍计2；原unknown和历史账均保留，缺证据/错关联继续拒绝。最终114项相关CPU、独立57项及16个定点反例通过；实际两原根只读刷新通过且记录/账目不变。尚待新发行和live切换。
-- 2026-11-23 00:00 UTC GEMM首个新实现f5ef07b0…的全量Eval `ev_1f22fcfe08e1` 已终态：10形状valid/complete/PASS，193.3558028微秒；随后自动开始profile。该测量尚非同分配正式acceptance，未完成资格审查或晋升，不据此宣称正式性能提升。
-- `e6f4866` 四包闭包、187项安装版回归、最终独立安装57项回归均通过。新外壳的实际SIGUSR1 CPU检查覆盖prepare/Planner/Episode：等待完整阶段返回后以interrupted停止，保存重开保留原账并可继续；此信号只适用于新外壳，不能发给旧live owner。两原根安装版准备核对通过，尚未实际切换。
-- vector v3 Episode5新源9cef0080…完整Eval通过，探索ABBA为−0.7417%；Agent主动回退champion并pivot，独立资格未请求，不能解读成审查认定不符合Schema。已核真实提示和代码：较慢候选可送现有candidate_ready，资格通过但拒绝晋升时可留working draft，没有新增handoff的必要。此次仅澄清Schema专属D完成语义及现有summary用法，原性能/资格/退出门不变；新候选如何实际响应此提示仍待后继实测。
-- 反馈现区分缺回执、unknown、fail和无实质改动；缺回执不推断未请求。独审发现的自洽旧源fail/unknown归因边界已修：负面反馈须绑定实际sealed源，不能借seed/working/tested代替；默认Planner原有上游保护，未声称live曾受此故障影响。最终独立25项、13个实际settlement反例、80案例进展差分和材料检查通过；正向门、状态与计数保持。仅coder材料成员变更，需新发行后再用于新操作。
-- `a21a952` 实际发行验证完成后，GEMM受控停止、由原65d API清结并在原根接续。Episode1仅用剩余476.27秒后预算耗尽，无report/资格/晋升；旧3600秒预算没有重置。随后自动进入Episode2，真实Coder输入已包含新提示，Qwen/adaptive/max/32000保持；原high调用已核实是依赖审查，不能误作Coder参数漂移。
-- vector Episode6已独立qualification pass，绑定实际sealed源eaaca981…；正式accepted=false，champion650fd…保留，合规draft继续参与同图迭代，原控制器已进入Episode7。这是资格与晋升分离的真实证据，不把探索ABBA的正收益冒充正式接受。
-- a21运行后封存校验发现新增3目录/4个pyc，原3069项内容、权限、链接均未改。实际`proc_view` helper未继承父进程`-B`；4个缓存与封存源码编译结构一致。未删缓存、改seal或热补运行环境，vector接续暂缓。修复只给helper启动添加`-B`；旧源5个真实namespace场景均复现缓存新增，新源5项通过，主代理独立5项复验通过；实际超时/输出/回收合同补充检查通过。新发行及真实连续运行仍待完成。
+最终独审在稳定的最终源码上重跑五模块，**93 passed**；另新写独立端到端链与 Schema off 检查，**2 passed**。后者直接核新 E 纠错 → D seal/review fail → 下一 E keep/下一 D 的具体反馈和 context，并拒绝同事实不同 digest 的错误 Coder 绑定。两条实际原根只读门再次通过，0 publication、0原件写入。不同范围和前作者重叠批次不累加；此前红/绿及失败原件保留，没有全仓、36 Episode 或新安装版套件全量重跑。CPU fake model/measurement 和本地服务的两批 guard 均记录外部 connect 为 0，不是整个历史会话的网络或保密保证。源码 AST、diff 格式和冻结材料清单检查通过，新模块在动态发行输入内；尚未 build/install 新四包，也未验证新发行的 live capture/restore。
+
+细节以 N 下五份外置报告为准：`implement-qualification-feedback-delivery.md`、`implement-planner-contract-correction.md`、`integrate-schema-execution-authority.md`、`fix-and-simplify-schema-closure.md`、`fix-legacy-schema-device-label.md`。后两份更新了早期接口和阻塞结论；最终独审及重跑证据见 `final-audit-schema-authority.md`。没有把各阶段增量相加为统一代码或费用总数。
+
+最终源码独审在指定源码、CPU 和只读原件范围内未发现阻挡合并的剩余实质问题；本轮仍待 commit、发行验收及实测。真实后继须在原 owner 正常结清及授权的新 operation 边界接入可信审阅/原件，由新 E 纠正事实并处理原 pipeline 设计问题，再由 D 产生新 sealed source，完成全 Task 测试、独立资格和原生测量。三叶事实纠错不豁免原 Tile_pipeline fail，CPU 或只读门通过不代表线上修复、晋升或 72 小时目标达成。

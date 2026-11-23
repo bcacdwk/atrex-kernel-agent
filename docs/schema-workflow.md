@@ -3,8 +3,10 @@
 Install matching `atrex-aka-schema`, `atrex-aka-light`, `atrex-aka-legacy` and
 `atrex-aka-framework` distributions. Schema owns design, extract, optimize and
 the fixed-design implementation driver. The selected native Agent and Executor
-still own model calls, correctness, measurement and promotion. Planner writes a
-complete design; Coder implements it in the normal Light Episode engine.
+still own model calls, correctness, measurement and promotion. Planner designs
+and revises Schema (C/E); Coder faithfully implements each frozen design (D) in
+the normal Light Episode engine. Kernel and Schema evolve together across these
+windows; correctness, design fidelity and champion promotion remain separate gates.
 
 KernelSchema is not a runtime, build or submodule dependency. The migrated
 language, specification, starter and selected Wiki are installed package data.
@@ -79,6 +81,76 @@ Omitting `--schema` leaves normal Light behavior unchanged and does not load the
 Schema parser or assets. Workspaces cannot switch between modes; resume their
 original controller or choose a new workspace.
 
+## Frozen execution facts and Contract corrections
+
+New native Schema operations receive a bounded execution context bound to the
+prepared Task, complete public Task, target hardware and native policy hashes.
+The selected framework comes from that frozen native policy. Architecture and toolchain
+facts come from an applicable native preparation snapshot, an owner-verified
+retained Job, or the selected native gateway's GET-only environment discovery.
+SSH reuses preparation observations; Schema does not launch another remote probe.
+Each fact retains its `observed`, `configured`, `declared`, `cache` or `unknown`
+source and evidence hash. A GPU name, `campaign.arch`, runtime prompt or reference
+implementation does not establish an observed architecture or implementation stack.
+Version fields accept bounded tokens and recognized native compiler banners;
+unrecognized banners become unknown, without exposing their raw text.
+
+Unknown facts use conservative canonical wording, such as `Unspecified architecture`;
+they do not authorize a specific ISA or version. C/E, the resulting D binding
+and its independent reviewer share the frozen context. A new D adopting context
+for an older design also retains it for later D operations. Replay restores the
+original bytes and intent hash without new discovery or Task interpretation.
+Old Task, root identity, configuration, publication, request and review records
+are not backfilled.
+
+The existing Light `create_workflow(..., driver_factory=...)` embedding interface
+can construct `SchemaWorkflow(..., task_constraint_review=...,
+retained_job_evidence=...)`. The two host-side input types currently live in
+`aka.workflow.schema._native`; they are not model tools or top-level package exports:
+
+- `TaskConstraintReview(public_task_sha256, constraints)` attests an explicit
+  trusted owner review of the **complete** frozen public Task. `constraints`
+  contains exactly `root.CONTRACT.Hardware_specification.Architecture`,
+  `root.CONTRACT.Hardware_specification.Stack.Language` and
+  `root.CONTRACT.Hardware_specification.Stack.Toolchain`, each with
+  `status: explicit|unspecified|unknown` and a canonical `value` or `None`.
+  `unspecified` requires that complete review; a failed keyword search is
+  insufficient. Missing review remains unknown and grants no correction authority.
+- `RetainedJobEvidence(raw, raw_sha256, experiment, record_sha256)` supplies the
+  original GET bytes and their retained SHA, exact Experiment reference and
+  `digest(record.as_dict())` from its native owner. The adapter verifies the
+  complete Task, source and shapes, original request, route/namespace, target
+  and selected framework. A model attachment or a claimed verification flag
+  cannot replace those records. Private payloads stay on the host.
+
+For an exact Planner-owned parent publication, the host can authorize changes
+only to those three leaves. Architecture/toolchain factual corrections require
+applicable observed evidence; explicit Task constraints must agree. The proof
+binds the original parent, operation, context and exact old/new leaf values,
+and the host rechecks the entire Contract diff. Model `decision.evidence` grants
+no authority. Algorithm, input domain, mathematics, numerical tolerances, ABI,
+storage, mutation, Device, other Contract fields and native policy remain frozen.
+Imported/extracted designs do not acquire a correction bypass.
+
+A correction publishes a new version with the exact old parent, retaining old
+versions, qualification failures and costs. Pure `fact_correction` preserves the
+hypothesis, history, working draft, progress, window and consumed budgets; it
+does not manufacture a new hypothesis or progress. A genuine execution rewrite
+still follows the ordinary new-design gates. New evidence hashes with the same
+facts may produce `keep`: D/reviewer retain the parent's original context.
+Conflicting established facts require an evidenced new version. Unknown evidence
+cannot erase a parent's observed facts. Pipeline changes remain design work for
+E, followed by faithful D implementation and new independent qualification.
+
+An old Device display label can be retained only with all three explicit
+`TaskConstraintReview` fields: `legacy_device_parent: DesignRef`,
+`legacy_device_label: str` and `legacy_device_target: str`. The host verifies the
+complete Task, exact target, original label bytes, Planner operation and parent
+lineage back to that reviewed anchor. Descendants must preserve the label bytes.
+The context's canonical Device remains the actual native target; this grants
+neither Device edits nor permission to change GPUs. A new C design cannot use
+the historical declaration, and there is no general device-alias allowance.
+
 ## Continuous execution and recovery
 
 Planner receives immutable copies of the champion, last tested candidate and
@@ -98,33 +170,24 @@ completed design, a new hypothesis or promotion. Final contract, numerical,
 hardware, closure and publication checks remain unchanged.
 
 The optional Planner setting `"writer_thinking_budget_tokens": 8192` requests a
-fixed per-response thinking budget only for design/optimize sessions on the Claude backend.
-In this mode the fixed budget replaces qualitative reasoning effort for the writer.
-It defaults to `null` (no override), accepts integers from 1024 through 16384,
-and requires a concrete model selection that agrees across the native environment,
-inline settings and relevant files in the native session's Linux filesystem view.
-The writer reads bounded user, project/local, managed and cached remote settings
-where visible, extracting only model/thinking metadata and whole-file hashes;
-other settings bodies and environment values never enter the public intent.
-It checks those sources again after private Home preparation. Ordinary permissions,
-hooks and WebFetch settings remain in effect. Conflicting selections or budgets,
-disabled thinking, nonempty primary `agent` selections, dynamic aliases/remapping and settings redirects it cannot
-prove are rejected before a model invocation. It does not emulate the CLI's full
-settings precedence or disable settings sources. Extraction, qualification and
-Coder sessions keep their existing settings. The writer preserves the original
-capability string and appends an override only for the selected model, normalizing
-the selector's case and context suffix without changing the actual model name.
-The override disables that model's `adaptive_thinking` and `effort` capabilities
-for the writer session: the pinned CLI sends `thinking.type=enabled` with the
-requested budget and omits `output_config.effort`, even when CLI defaults or user
-settings specify effort. The configured effort and settings remain unchanged
-for other roles and for the default `null` budget. The output-token setting,
-timeout and root allowance are unchanged. A real provider rejected the earlier
-combination of fixed budget and qualitative effort; the revised request has
-been verified against an isolated local fake provider. Real acceptance and
-effectiveness of the revised request still require validation; failures do not
-authorize a silent model or thinking-mode change. A starting value of 8192 is an
-optional experiment, not a guarantee of output or successful design.
+fixed per-response thinking budget for design/optimize sessions on the Claude
+backend. It defaults to `null`, accepts integers from 1024 through 16384, and
+requires a concrete model consistent across the native environment and relevant
+settings. Bounded settings inspection retains only model/thinking metadata and
+file hashes, and repeats after private Home preparation. Conflicting budgets,
+disabled thinking, primary `agent` selections and unprovable aliases or redirects
+are rejected before invocation. Ordinary permissions, hooks and settings remain
+in effect; this does not emulate the CLI's full settings precedence.
+
+The writer session overrides only the selected model's `adaptive_thinking` and
+`effort` capabilities, so the pinned CLI sends `thinking.type=enabled` with the
+budget and omits `output_config.effort`. Other roles and the default `null` mode
+keep their settings; output limits, timeout and root allowance are unchanged.
+The earlier budget-plus-effort request was rejected by the real provider.
+The revised request has since been accepted in the recorded Qwen run and used
+tools, followed by a completed GEMM design; that observation is not a general
+guarantee of design quality or completion. Failures do not authorize a silent
+model or thinking-mode change. See the [validation record](schema-validation.md).
 
 The `fixed_budget_without_effort` mode, budget, concrete model selection,
 settings-file hashes and merged inline settings digest are bound to the writer
@@ -167,6 +230,24 @@ Progress feedback distinguishes a missing retained qualification result
 (`qualification-receipt-missing`, which does not establish whether review was
 attempted) from `qualification-failed`,
 `qualification-unknown` and `no-substantive-change`; these remain `no-progress`.
+
+New D/E requests carry bounded concrete non-pass obligation IDs, reasons and
+verified citations from retained qualification. Selection checks the same Task,
+design, actual sealed source and execution context. D receives only a review of
+its exact current seed; E labels earlier reviewed source as
+`historical-reviewed-source`, without presenting it as the current seed.
+The view includes original Episode/operation, receipt and binding digests, source
+identity, whole-file hashes and readable inline excerpts from the permitted
+Task, design and reviewed source. Reasons are reviewer evidence to assess.
+
+The qualification summary is capped at 5,600 characters, 24 non-pass obligations
+and eight citations per obligation; E feedback remains capped at 8,000 characters.
+Omissions and unavailable citations are explicit. Only the existing four-Episode
+window is searched, and a later unreviewed row does not hide an earlier matching
+review. Older rows without a summary can be projected from their original native
+archive and verified sources for a new request; old rows and frozen requests are
+not rewritten. A mismatched or missing receipt supplies no repair authority,
+and missing does not establish either an unrequested review or a failed review.
 
 Qualification can correct a completed review's malformed output up to Planner's
 `max_repairs` limit (default one). Each correction uses a fresh, admitted and
@@ -316,3 +397,5 @@ They use synthetic model output and measurements. Real Claude/Qwen and L20D
 campaigns, useful repeated design/implementation progress and a 72-hour
 observation window require separate run evidence; these are not established by
 the CPU checks or the historical examples.
+See the [validation record](schema-validation.md) for current candidate, release
+and live-run status.

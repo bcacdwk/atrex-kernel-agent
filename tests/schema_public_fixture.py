@@ -34,6 +34,25 @@ def install_native_cpu(monkeypatch, directory):
     task_directory.mkdir(exist_ok=True)
     (task_directory / "reference.py").write_bytes(BASELINE)
     (directory / "input.py").write_bytes(BASELINE)
+    # Schema now projects the native discovery interface into its writer. Keep
+    # this CPU service explicit; never let a public-entry test discover a real
+    # route merely because the production controller needs environment facts.
+    from aka.execution.legacy.executor import LegacyExecutor
+    from aka.execution.environment_query import _snapshot
+    def environment(executor, query):
+        route = executor._environment_backend()
+        facts = {"gpu": query.hardware, "arch": "sm_103", "source": "observed",
+                 "frameworks": {"triton": {"available": True, "version": "3.7.1"}}}
+        return _snapshot(route.backend, route.endpoint, query, facts, facts, [], route.operations)
+    monkeypatch.setattr(LegacyExecutor, "query_environment", environment)
+    fixture = directory / "schema-fixture"
+    fixture.mkdir(exist_ok=True)
+    for source in FIXTURE.iterdir():
+        raw = source.read_bytes().replace(b"Device: Synthetic test device", b"Device: L20D")
+        raw = raw.replace(b"Architecture: test", b"Architecture: sm_103")
+        raw = raw.replace(b"Language: Test language 1", b"Language: Triton")
+        raw = raw.replace(b"Toolchain: Test compiler 1", b"Toolchain: Triton 3.7.1")
+        (fixture / source.name).write_bytes(raw)
 
     def process(command, *, cwd, timeout, env):
         workspace = Path(cwd)
@@ -55,7 +74,7 @@ def install_native_cpu(monkeypatch, directory):
                               "claim": "Synthetic public task only"}],
                 "next_actions": ["Implement this expression and submit native evidence"]}
             (workspace / "output/decision.json").write_text(json.dumps(decision))
-            for source in FIXTURE.iterdir():
+            for source in fixture.iterdir():
                 raw = source.read_bytes()
                 if source.name == "root.yaml":
                     raw = raw.replace(b"          y = x\n  Work_schedule:",
@@ -82,6 +101,7 @@ def install_native_cpu(monkeypatch, directory):
     def load_problem(provider, source, **kwargs):
         skeleton = CpuCampaign(directory)
         snapshot = kwargs.get("snapshot_directory") or directory / "snapshot"
+        snapshot.mkdir(parents=True, exist_ok=True)
         return LoadedProblem("synthetic_cpu", task_directory, task_directory / "reference.py",
             None, None, "none", agent=AgentProblem(()), initial_source=skeleton.problem.initial_source,
             evaluation=replace(skeleton.problem.evaluation, runtime_root=directory / "synthetic-evaluator"),
@@ -129,7 +149,7 @@ def install_native_cpu(monkeypatch, directory):
         return campaign
 
     monkeypatch.setattr("aka.workflow.light.campaign.ManagedCampaign.create", classmethod(create))
-    return SimpleNamespace(directory=directory, campaigns=campaigns, agents=agents, calls=calls,
+    return SimpleNamespace(directory=directory, campaigns=campaigns, agents=agents, calls=calls, fixture=fixture,
                            task=task_directory)
 
 
@@ -168,7 +188,7 @@ def schema_config(harness, *, paired=False, episodes=2):
         evidence = harness.directory / "pairing.json"
         evidence.write_text(json.dumps({"purpose": "synthetic CPU entrypoint fixture only",
             "kernel_sha256": hashlib.sha256(BASELINE).hexdigest(), "device": "L20D"}))
-        config["initial"] = {"schema": str(FIXTURE.resolve()),
+        config["initial"] = {"schema": str(harness.fixture.resolve()),
             "source_files": {"kernel.py": hashlib.sha256(BASELINE).hexdigest()},
             "hardware": "L20D", "evidence": [str(evidence)]}
     return config
