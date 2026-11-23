@@ -386,17 +386,18 @@ class LegacyExperiment:
             if command.on_observation is not None:
                 command.on_observation(value)
         key = command.idempotency_key
-        inline_eval = (command.submission is not None and not command.source_archives
-                       and command.operation in {"run", "same_allocation_abba"})
-        if (command.source_archives or inline_eval) and key is None:
+        from aka.execution.gateway.requests import INLINE_OPERATIONS
+        inline_submission = (command.submission is not None and not command.source_archives
+                             and command.operation in INLINE_OPERATIONS)
+        if (command.source_archives or inline_submission) and key is None:
             import hashlib
             key = "experiment:" + hashlib.sha256(json.dumps([ref.as_dict(), attempt_id],
                 sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-        if inline_eval:
+        if inline_submission:
             import hashlib
             # Retain the key before entering Execution, independently of its
             # asynchronous fact pipe. The immutable prepared bytes plus timeout
-            # determine the raw Eval request; a reused attempt cannot change them.
+            # determine the typed request; a reused attempt cannot change them.
             binding = {"schema_version": 1, "attempt_id": attempt_id, "idempotency_key": key,
                 "operation": command.operation, "timeout": command.timeout,
                 "submission_sha256": hashlib.sha256(command.submission).hexdigest(),

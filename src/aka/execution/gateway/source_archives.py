@@ -85,6 +85,15 @@ def prepared_payload(command, *, ssh=False):
         return None
     prepared = json.loads(command.submission)
     validate_archives(prepared, command.source_archives, command.operation, ssh=ssh)
+    profile_defaults = (prepared.get("kind") == "profile" and command.profile_options is not None
+                        and not command.source_archives and not ssh)
+    if profile_defaults:
+        # The typed CLI used these public options only for absent body fields.
+        # Freeze those fallbacks before a keyed raw request acquires its identity.
+        from dataclasses import asdict
+        for name, value in asdict(command.profile_options).items():
+            if value is not None and (name not in {"counters", "kernel_regex"} or value):
+                prepared["request"].setdefault(name, list(value) if name == "counters" else value)
     key = command.idempotency_key
     old_key = prepared.get("request", {}).get("idempotency_key")
     if key is not None:
@@ -94,7 +103,8 @@ def prepared_payload(command, *, ssh=False):
     if command.source_archives and key is None:
         raise UnsupportedExecution("source archives require an explicit physical idempotency key")
     if not command.source_archives:
-        return command.submission if key is None else json.dumps(prepared, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        return (command.submission if key is None and not profile_defaults
+                else json.dumps(prepared, separators=(",", ":"), allow_nan=False).encode("utf-8"))
     prepared[ARCHIVES] = [
         {"role": item.role, "path": item.path, "entry_point": item.entry_point,
          "content": base64.b64encode(item.content).decode("ascii")}

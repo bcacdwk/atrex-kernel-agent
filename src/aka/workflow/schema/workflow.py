@@ -715,6 +715,9 @@ class SchemaWorkflow:
         first = dict(owners).get(first_permit)
         if first is None:
             return False
+        from aka.execution.gateway.requests import INLINE_OPERATIONS, submission_path
+        if reference.operation not in INLINE_OPERATIONS:
+            return False
         live = first.get("live_eval", {})
         if (len(dispatches) != len(owners) or len(set(physical_ids)) != len(physical_ids)
                 or reference.backend != "gateway" or not reference.endpoint
@@ -722,7 +725,7 @@ class SchemaWorkflow:
                 or live.get("attempt_id") != attempt.attempt_id
                 or live.get("idempotency_key") != reference.idempotency_key
                 or live.get("request_identity") != reference.request_identity
-                or live.get("route_identity") != digest([reference.endpoint, "/v1/jobs/eval", "", ""])
+                or live.get("route_identity") != digest([reference.endpoint, submission_path(reference.operation), "", ""])
                 or not live.get("namespace_identity") or reference.profile):
             return False
         association = {**live, "job_reference": asdict(reference),
@@ -1239,7 +1242,8 @@ class SchemaWorkflow:
         changed = False
         with campaign.experiment_record_reader(executor=self._recovery_executor) as records:
             for record in facts["records"]:
-                if len(record.attempts) != 1:
+                if (len(record.attempts) != 1 or len(record.steps) != 1
+                        or record.steps[0].operation != "run"):
                     continue
                 attempt, = record.attempts
                 owners = [(permit, call) for permit, call in linked.items()

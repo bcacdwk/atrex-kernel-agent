@@ -348,22 +348,34 @@ Current managed defaults respect the selected backend's Dev timeout limit;
 explicit incompatible deadlines are rejected before dispatch. Typed evaluation
 and the Schema root limits retain their separate budgets.
 
-Legacy can recover a transient inline Eval submission inside the same live
+Legacy can recover a transient inline Eval, Profile, Check or Disassemble submission inside the same live
 call when `idempotent_replay=true` and an explicit gateway URL have been
 configured for a service verified to deduplicate identical keyed requests.
 This option defaults to false. The current path requires frozen AK/SK
 authentication, without token or named/routed profiles; it is tested with
 gateway SDK 0.14.36 and needs revalidation when that SDK changes.
 
-The original key, request body, route and job timeout stay fixed. At most two
+The original key, complete request body, operation route and namespace stay fixed;
+the original owner retains them before submission. At most two
 extra native launches use the existing 5/10-second retry schedule within 120
 seconds and the original client deadline; each consumes root/window allowance.
-SDK internal HTTP retries are not separate native launches. Original failures
+Auxiliary operations make one submission POST per admitted native launch;
+SDK transport/overload retries cannot bypass that allowance. Eval retains its
+existing SDK HTTP retry behavior. Original failures
 remain private artifacts, and only the same original job's terminal receipt
 settles the linked unknown submissions. Once a job ID is known, recovery only
 queries or cancels that job. Explicit no-replay policy, corrupted receipts,
 missing identity, another unknown owner or a process restart cannot obtain
 this live-call permission. Generic scoped replay remains disabled.
+
+Profile sends its runtime budget as `options.timeout_s`. Check and Disassemble
+retain local wait/call budgets and report `job-runtime-budget-unconfirmed` as an
+observation: their native API does not establish a remote runtime deadline.
+That observation cannot mask an actual HTTP failure. Historical unknown
+submissions without an original retained identity cannot acquire a new key.
+Ordinary recorded auxiliary calls also preserve the caller key on the wire,
+but only the eligible live owner above obtains the frozen association and
+bounded continuation permission.
 
 After a Coder timeout archives its rejected Episode, Schema can finish an
 already cancelled inline Eval through `LegacyExperiment.reconcile_cancelled_eval`.

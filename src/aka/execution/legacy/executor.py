@@ -179,8 +179,9 @@ class LegacyExecutor(GatewayRecoveryMixin):
             request = replace(request, environment=environment)
         live = None
         owner = getattr(command.on_observation, "_live_eval_owner", None)
+        from aka.execution.gateway.requests import INLINE_OPERATIONS
         if (self._dispatch_scope is not None and self.configuration.get("idempotent_replay")
-                and owner is not None and command.operation in {"run", "same_allocation_abba"}
+                and owner is not None and command.operation in INLINE_OPERATIONS
                 and not command.source_archives and not request.ssh):
             from copy import deepcopy
             from aka.execution.configuration import client_wait_timeout

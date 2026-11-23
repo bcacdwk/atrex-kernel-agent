@@ -64,7 +64,7 @@ def native_launcher(tmp_path, monkeypatch, *, host_environment=None,
         fields["capabilities"], [], LegacyExecutor.capabilities.operations)
     support = match_environment(EnvironmentQuery("L20D", "run"), environment)
     monkeypatch.setattr(LegacyExecutor, "_environment_backend",
-        lambda self: SimpleNamespace(check=lambda *a, **k: support))
+        lambda self: SimpleNamespace(backend="legacy", endpoint="cpu-fixture", check=lambda *a, **k: support))
     monkeypatch.setattr(LegacyExecutor, "_job_transport",
         lambda self: SimpleNamespace(environment={}, endpoint="", profile=""))
 

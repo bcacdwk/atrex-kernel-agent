@@ -9,7 +9,7 @@ from aka.execution.configuration import client_wait_timeout
 from .requests import wait_budget_records
 from .returned_files import emit
 from aka.execution.outcomes import emit_fact, emit_diagnostic
-from .requests import NATIVE_ABBA, operation_request, prepared_operation, effective_budget, hard_limit, typed_gateway_job_timeout
+from .requests import NATIVE_ABBA, operation_request, prepared_operation, effective_budget, hard_limit, typed_gateway_job_timeout, submission_path
 
 
 def run_prepared(args, workspace, sync_paths, grace):
@@ -55,7 +55,7 @@ def submit_prepared(args, workspace, grace, prepared):
         budget = effective_budget(requested, limit=limit)
         request.setdefault("options", {})["timeout_s"] = budget.effective
     else:
-        emit_diagnostic({"failure_class":"protocol", "reason":"job-runtime-budget-unconfirmed"})
+        emit_diagnostic({"failure_class":"observation", "reason":"job-runtime-budget-unconfirmed"})
     if args.input:
         raise ValueError("prepared typed requests do not support custom input")
     from .source_archives import read_archives, validate_archives, run_archived, SourceArchiveError
@@ -65,20 +65,37 @@ def submit_prepared(args, workspace, grace, prepared):
     try:
         from aka.execution.live_eval import LIVE_ENV
         if os.environ.get(LIVE_ENV):
-            from aka.execution.live_eval import sdk_http, digest, WIRE_PATH
+            from aka.execution.live_eval import sdk_http, digest
             binding = json.loads(os.environ[LIVE_ENV])
-            if (archives or kind != "run" or not args.url or args.gateway_profile
+            path = submission_path(kind)
+            if (archives or not args.url or args.gateway_profile
                     or binding["idempotency_key"] != request.get("idempotency_key")
                     or binding["request_identity"] != digest(request)
                     or binding["namespace_identity"] != digest(os.environ.get("AGATE_AK", ""))
-                    or binding["route_identity"] != digest([args.url, WIRE_PATH, "", ""])):
+                    or binding["route_identity"] != digest([args.url, path, "", ""])):
                 raise ValueError("live Eval frozen submission changed before SDK call")
-            process = transport._run_direct_job(url=args.url, kind="eval", payload=request,
+            process = transport._run_direct_job(url=args.url, kind=path.rsplit("/", 1)[1], payload=request,
                 timeout=args.timeout, queue_wait_grace=grace, operation=kind,
-                http=sdk_http(dict(os.environ), args.url, deadline=binding["client_deadline"]),
+                http=sdk_http(dict(os.environ), args.url, deadline=binding["client_deadline"], operation=kind),
                 submit_timeout=transport.MAX_HTTP_REQUEST_TIMEOUT, client_deadline=binding["client_deadline"])
         elif archives:
             process = run_archived(args, workspace, grace, request, archives, transport=transport)
+        elif kind != "run" and request.get("idempotency_key") and executable is not None:
+            # The typed CLI rebuilds these bodies without the caller key. Resolve
+            # its normal connection/auth once, then send the frozen native body.
+            from types import SimpleNamespace
+            from atrex_gateway_client.cli import _client
+            from aka.execution.live_eval import sdk_request
+            client = _client(SimpleNamespace(url=args.url, profile=args.gateway_profile,
+                token=None, ak=None, sk=None, http_timeout=transport.MAX_HTTP_REQUEST_TIMEOUT))
+            def http(url, method, path, payload, timeout):
+                if url.rstrip("/") != client.base_url.rstrip("/"):
+                    raise ValueError("prepared submission differs from selected SDK connection")
+                return sdk_request(client, method, path, payload, timeout)
+            process = transport._run_direct_job(url=client.base_url,
+                kind=submission_path(kind).rsplit("/", 1)[1], payload=request,
+                timeout=args.timeout, queue_wait_grace=grace, operation=kind, http=http,
+                submit_timeout=transport.MAX_HTTP_REQUEST_TIMEOUT)
         elif args.url and executable is None:
             process = transport._run_direct_job(url=args.url, kind={"run":"eval", "check":"compile"}.get(kind, kind),
                 payload=request, timeout=args.timeout, queue_wait_grace=grace)
@@ -135,9 +152,9 @@ def submit_prepared(args, workspace, grace, prepared):
         from .diagnostics import report_typed_limitation
         report_typed_limitation(f"http {error.status}")
         # No second route is submitted here. The owning experiment receives admission facts.
-        emit_diagnostic({"failure_class": "infrastructure" if error.status in {429,502,503,504} else "request",
+        emit_diagnostic({"failure_class": "infrastructure" if error.status in {None,429,502,503,504} else "request",
                          "http_status": error.status, "reason": "gateway-http-rejection"})
-        if error.status in {429,502,503,504}:
+        if error.status in {None,429,502,503,504}:
             print(transport.INFRASTRUCTURE_MARKER, file=sys.stderr)
             return transport.ENVIRONMENT_TEMPFAIL
         print(f"HTTP {error.status}", file=sys.stderr)

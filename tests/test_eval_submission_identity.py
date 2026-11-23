@@ -180,19 +180,24 @@ def test_hard_limit_change_cannot_change_payload_under_original_key(tmp_path, mo
         invoke(bound)
 
 
-def test_unrecorded_and_non_eval_commands_do_not_gain_inline_eval_keys(tmp_path):
+def test_unrecorded_and_non_inline_commands_do_not_gain_inline_keys(tmp_path):
     command = command_at(tmp_path)
     assert LegacyExperiment._observed_command(command, None, None, None) is command
     records, ref, attempt = owner_at(tmp_path, command)
-    profile = replace(command, operation="profile")
-    assert LegacyExperiment._observed_command(profile, records, ref, attempt).idempotency_key is None
+    dev = replace(command, operation="dev", submission=None)
+    assert LegacyExperiment._observed_command(dev, records, ref, attempt).idempotency_key is None
     assert not any(item.role == "submission_intent" for item in records.get(ref).artifacts)
 
 
-def test_archive_keeps_original_key_derivation_and_upload_route(tmp_path, monkeypatch):
+@pytest.mark.parametrize("profile", [False, True])
+def test_archive_keeps_original_key_derivation_and_upload_route(tmp_path, monkeypatch, profile):
     from aka.execution.gateway import source_archives
+    from aka.contracts.execution import ProfileOptions
     command = command_at(tmp_path)
     prepared = json.loads(command.submission)
+    if profile:
+        prepared["kind"] = "profile"
+        command = replace(command, operation="profile", profile_options=ProfileOptions("deep", "ncu", ("cpu.counter",)))
     prepared["request"]["candidate"] = {"archive": "source.tar.gz", "entry_point": "kernel.py"}
     archive = PreparedSourceArchive("candidate", "source.tar.gz", "kernel.py", b"cpu archive bytes")
     command = replace(command, submission=json.dumps(prepared).encode(), source_archives=(archive,))
@@ -206,6 +211,7 @@ def test_archive_keeps_original_key_derivation_and_upload_route(tmp_path, monkey
 
     def archived(args, workspace, grace, request, archives, **kwargs):
         assert archives == (archive,) and request["idempotency_key"] == expected
+        assert not {"level", "profiler", "counters"}.intersection(request)
         calls.append(request)
         return subprocess.CompletedProcess((), 0, json.dumps({"job_id": "cpu-upload",
             "status": "succeeded", "result": {}}), "")

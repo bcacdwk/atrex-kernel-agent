@@ -24,6 +24,7 @@ from test_eval_submission_identity import command_at, owner_at
 CHILD = r'''
 import json, os, sys
 from pathlib import Path
+assert sys.dont_write_bytecode
 def audit(event, args):
     if event.startswith("socket.") and event in {"socket.connect", "socket.getaddrinfo"}:
         raise AssertionError("CPU fixture forbids network")
@@ -96,20 +97,22 @@ raise SystemExit(sandbox.main())
 '''
 
 
-def fixture(tmp_path, monkeypatch, *, mode="not-accepted", abba=False, limit=3, enabled=True):
+def fixture(tmp_path, monkeypatch, *, mode="not-accepted", abba=False, limit=3, enabled=True,
+            command_factory=command_at, child_source=CHILD):
     # Import is deliberate: an unavailable SDK is a failed test, never a skip.
     import atrex_gateway_client
     from aka.execution import live_eval
     monkeypatch.setattr(live_eval, "InfrastructureRetryPolicy", lambda: InfrastructureRetryPolicy((0, 0), 120))
     child = tmp_path / "cpu_launcher.py"
-    child.write_text(CHILD)
+    child.write_text(child_source)
     state_path = tmp_path / "cpu-service.json"
     state_path.write_text(json.dumps({"mode": mode, "calls": [], "jobs": {}}))
     environment = {"PATH": "/usr/bin:/bin", "AGATE_AK": "cpu-ak", "AGATE_SK": "cpu-sk",
+        "PYTHONDONTWRITEBYTECODE": "1",
         "CPU_STATE": str(state_path), "ATREX_SANDBOX_QUEUE_WAIT_GRACE": "0",
         "PYTHONPATH": os.pathsep.join((str(Path(__file__).resolve().parents[1] / "src"),
             str(Path(atrex_gateway_client.__file__).resolve().parents[1])))}
-    command = replace(command_at(tmp_path, abba=abba), environment=environment, cancel_event=Event())
+    command = replace(command_factory(tmp_path, abba=abba), environment=environment, cancel_event=Event())
     records, ref, attempt = owner_at(tmp_path, command)
     bound = LegacyExperiment._observed_command(command, records, ref, attempt)
     request = SandboxRequest(tmp_path, (sys.executable, str(child)), "L20D", "", "https://cpu.invalid",
@@ -126,7 +129,7 @@ def fixture(tmp_path, monkeypatch, *, mode="not-accepted", abba=False, limit=3, 
     fields = json.loads((Path(__file__).parent / "fixtures/agate_b41_environment.json").read_text())
     snapshot = _snapshot("legacy", "cpu-fixture", EnvironmentQuery("L20D"), fields["detail"],
         fields["capabilities"], [], LegacyExecutor.capabilities.operations)
-    support = match_environment(EnvironmentQuery("L20D", "run"), snapshot)
+    support = match_environment(EnvironmentQuery("L20D", command.operation), snapshot)
     monkeypatch.setattr(executor, "_environment_backend", lambda: SimpleNamespace(check=lambda *a, **k: support))
     state = RunState(tmp_path / "schema", limits=RunLimits(max_dispatches=limit), workspace=tmp_path, identity={})
     def run():

@@ -1,4 +1,4 @@
-"""Bounded continuation of one still-live, recorded inline Eval submission.
+"""Bounded continuation of one still-live, recorded inline native submission.
 
 The persisted links are evidence, never permission to replay after owner exit.
 Only the original open dispatch scope can spend another native-call permit.
@@ -55,11 +55,13 @@ class _LiveCancellation:
 
 class LiveEval:
     def __init__(self, owner, command, request, scope, transport, *, wait_timeout, unchanged):
+        deadline = time.monotonic() + wait_timeout if wait_timeout is not None else float("inf")
         if owner.claimed:
             raise UnsupportedExecution("recorded Eval continuation already left its live owner")
         binding = owner.binding
         if (binding["idempotency_key"] != command.idempotency_key
                 or binding["submission_sha256"] != hashlib.sha256(command.submission).hexdigest()
+                or binding["environment_sha256"] != digest(dict(command.environment))
                 or binding["timeout"] != command.timeout
                 or binding["operation"] != command.operation):
             raise UnsupportedExecution("recorded Eval continuation identity changed")
@@ -71,18 +73,25 @@ class LiveEval:
         # The simple explicit connection has no mutable named/routed profile.
         from atrex_gateway_client import Client  # Fail before admission if unavailable.
         del Client
-        from .gateway.requests import operation_request, prepared_operation
+        from .gateway.requests import operation_request, prepared_operation, submission_path
         prepared = json.loads(request.submission)
         kind = prepared_operation(prepared, command.operation)
         wire = operation_request(prepared["request"], kind, ssh=False)
-        wire.setdefault("options", {})["timeout_s"] = command.timeout
+        if kind in {"run", "profile"}:
+            wire.setdefault("options", {})["timeout_s"] = command.timeout
+        self.operation = kind
+        path = submission_path(kind)
         self.identity = {"attempt_id": binding["attempt_id"], "idempotency_key": command.idempotency_key,
-            "request_identity": digest(wire), "route_identity": digest([transport.endpoint, WIRE_PATH, "", ""]),
+            "request_identity": digest(wire), "route_identity": digest([transport.endpoint, path, "", ""]),
             "namespace_identity": digest(environment["AGATE_AK"])}
+        if kind != "run":
+            # Keep the exact final auxiliary body with its original owner before
+            # any POST, independently of launcher output and the receipt pipe.
+            owner.archive(encoded({"identity": self.identity, "request": wire}), "live_eval_submission")
         self.owner, self.command, self.scope = owner, command, scope
         self.endpoint = transport.endpoint
         self.unchanged = unchanged
-        self.deadline = time.monotonic() + wait_timeout if wait_timeout is not None else float("inf")
+        self.deadline = deadline
         self.policy = InfrastructureRetryPolicy()
         self.recovery_deadline = None
         self.permits, self.completed = [], []
@@ -97,6 +106,8 @@ class LiveEval:
         if (not self.active or self.scope.closed or command is not None and command is not self.command
                 or not self.unchanged()
                 or self.command.idempotency_key != self.owner.binding["idempotency_key"]
+                or self.command.operation != self.owner.binding["operation"]
+                or digest(dict(self.command.environment)) != self.owner.binding["environment_sha256"]
                 or self.command.timeout != self.owner.binding["timeout"]
                 or hashlib.sha256(self.command.submission).hexdigest() != self.owner.binding["submission_sha256"]):
             raise UnsupportedExecution("live Eval owner, scope or frozen identity changed")
@@ -163,7 +174,8 @@ class LiveEval:
         return self.remaining() > 0
 
     def matches(self, attempt):
-        return (attempt.attempt_id and attempt.idempotency_key == self.identity["idempotency_key"]
+        return (attempt.attempt_id and attempt.operation == self.operation
+                and attempt.idempotency_key == self.identity["idempotency_key"]
                 and attempt.request_identity == self.identity["request_identity"])
 
     def project(self, result, *, final=False):
@@ -173,7 +185,7 @@ class LiveEval:
         association = None
         if len(references) == 1 and attempts and all(self.matches(item) for item in attempts):
             ref = references[0]
-            if (ref.endpoint == self.endpoint and not ref.profile
+            if (ref.operation == self.operation and ref.endpoint == self.endpoint and not ref.profile
                     and ref.request_identity == self.identity["request_identity"]
                     and ref.idempotency_key == self.identity["idempotency_key"]):
                 association = {**self.identity, "job_reference": result.as_dict()["job_references"][0]
@@ -217,13 +229,14 @@ class LiveEval:
         return projected
 
 
-def sdk_http(environment, endpoint, *, deadline=None, transport_retries=2):
+def sdk_http(environment, endpoint, *, deadline=None, transport_retries=2, operation="run"):
     """Use SDK signing/serialization, with no profile/config or legacy POST fallback."""
     from atrex_gateway_client import Client
     from atrex_gateway_client.auth import AkSkAuth
     from atrex_gateway_client.errors import GatewayError
-    from .gateway.sandbox import GatewayHTTPError
+    from .gateway.requests import submission_path
     import urllib.request
+    path_for_submission = submission_path(operation)
 
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -233,12 +246,12 @@ def sdk_http(environment, endpoint, *, deadline=None, transport_retries=2):
         def _request(self, method, path, body=None, timeout=None):
             # Submission cannot outlive the owner deadline. Cancellation and
             # its confirming GET retain their separate bounded cleanup budget.
-            if deadline is not None and method == "POST" and path == WIRE_PATH:
+            if deadline is not None and method == "POST" and path == path_for_submission:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise GatewayError(408, {"reason": "original_client_deadline_exhausted"})
                 timeout = min(timeout or self.timeout, remaining)
-            if method == "POST" and path not in {WIRE_PATH} and not path.endswith("/cancel"):
+            if method == "POST" and path != path_for_submission and not path.endswith("/cancel"):
                 raise self.original_route_error
             try:
                 return super()._request(method, path, body, timeout)
@@ -260,26 +273,38 @@ def sdk_http(environment, endpoint, *, deadline=None, transport_retries=2):
     def request(url, method, path, payload, timeout):
         if url != endpoint:
             raise UnsupportedExecution("live Eval cannot change its SDK connection")
-        try:
-            if method == "POST" and path == WIRE_PATH:
-                client.timeout = timeout
-                return client.submit_job("eval", payload)
-            return client._request(method, path, payload, timeout)[1]
-        except GatewayError as error:
-            # Preserve the original SDK payload, including structured transport causes.
-            original = error.payload
-            sources = [original] if isinstance(original, dict) else []
-            if sources and isinstance(original.get("error"), dict):
-                sources.append(original["error"])
-            sources.extend(value["details"] for value in tuple(sources) if isinstance(value.get("details"), dict))
-            policies = {}
-            for name in ("replay_policy", "execution_state", "retry_advice"):
-                values = [value[name] for value in sources if name in value]
-                if values:
-                    veto = "unknown" if name == "execution_state" else "never"
-                    policies[name] = veto if veto in values else values[0]
-            native = {"category": error.error_class or "infrastructure", "code": error.reason or "sdk-http-error",
-                "message": str(error), "details": {"original_sdk_error": {"status": error.status, "payload": original}},
-                **policies}
-            raise GatewayHTTPError(error.status, json.dumps(native)) from error
+        return sdk_request(client, method, path, payload, timeout,
+                           eval_submit=operation in {"run", "same_allocation_abba"} and method == "POST" and path == WIRE_PATH)
     return request
+
+
+def sdk_request(client, method, path, payload, timeout, *, eval_submit=False):
+    """Preserve SDK signing and errors; keyed auxiliary admission is one POST.
+
+    The owner, not submit_job's hidden transport/overload loop, admits another
+    auxiliary POST. Eval retains its existing SDK submission behavior.
+    """
+    from atrex_gateway_client.errors import GatewayError
+    from .gateway.sandbox import GatewayHTTPError
+    try:
+        if eval_submit:
+            client.timeout = timeout
+            return client.submit_job("eval", payload)
+        return client._request(method, path, payload, timeout)[1]
+    except GatewayError as error:
+        # Preserve the original SDK payload, including structured transport causes.
+        original = error.payload
+        sources = [original] if isinstance(original, dict) else []
+        if sources and isinstance(original.get("error"), dict):
+            sources.append(original["error"])
+        sources.extend(value["details"] for value in tuple(sources) if isinstance(value.get("details"), dict))
+        policies = {}
+        for name in ("replay_policy", "execution_state", "retry_advice"):
+            values = [value[name] for value in sources if name in value]
+            if values:
+                veto = "unknown" if name == "execution_state" else "never"
+                policies[name] = veto if veto in values else values[0]
+        native = {"category": error.error_class or "infrastructure", "code": error.reason or "sdk-http-error",
+            "message": str(error), "details": {"original_sdk_error": {"status": error.status, "payload": original}},
+            **policies}
+        raise GatewayHTTPError(error.status, json.dumps(native)) from error

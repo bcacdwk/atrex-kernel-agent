@@ -10,7 +10,14 @@ from aka.execution.outcomes import emit_fact
 
 LIMITS_ENV = "AKA_EXECUTION_ENVIRONMENT_LIMITS"
 NATIVE_ABBA = "same_allocation_abba"
+INLINE_OPERATIONS = frozenset({"run", NATIVE_ABBA, "profile", "check", "disassemble"})
 MAX_TYPED_GATEWAY_JOB_TIMEOUT = 10_800
+
+
+def submission_path(operation):
+    if operation not in INLINE_OPERATIONS:
+        raise UnsupportedExecution("unsupported inline submission operation")
+    return "/v1/jobs/" + {"run": "eval", NATIVE_ABBA: "eval", "check": "compile"}.get(operation, operation)
 
 
 def typed_gateway_job_timeout(command_timeout, queue_wait_grace=None, *, limit=None):
@@ -74,7 +81,7 @@ def operation_request(request, kind, *, ssh=False):
         return value
     if kind == "run":
         return value
-    common = {"name", "spec", "candidate", "env_vars", "requirements", "deps_mode"}
+    common = {"name", "spec", "candidate", "env_vars", "requirements", "deps_mode", "idempotency_key"}
     from .native_options import catalog, COMMAND_BY_KIND
     common |= {option.dest for option in catalog().values() if COMMAND_BY_KIND.get(kind) in option.commands}
     common.add("placement")
@@ -89,9 +96,9 @@ def operation_request(request, kind, *, ssh=False):
         raise ValueError("unsupported prepared gateway operation")
     if value.get("spec", {}).get("num_gpus", 1) != 1:
         raise UnsupportedExecution("selected compile/disassemble adapter supports one GPU")
-    allowed = common | {"init_kwargs", "timeout_s"} | ({"arch", "sanitize"} if kind == "check" else {"fmt"})
+    allowed = common | {"init_kwargs"} | ({"arch", "sanitize"} if kind == "check" else {"fmt"})
     if ssh:
-        allowed.add('diagnostic_reference')
+        allowed.update(('diagnostic_reference', 'timeout_s'))
     return {key: item for key, item in value.items() if key in allowed}
 
 
