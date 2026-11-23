@@ -265,7 +265,10 @@ def validate_selection(manifest, read):
         closure.file(source / "SKILL.md")
         for prefix in SKILL_ROOTS: closure.mount(f"{prefix}/{name}")
         digest = hashlib.sha256()
-        for entry in row["entries"]:
+        # Match skills.fingerprint's established Path component ordering.
+        # The content manifest uses lexical strings, which order e.g.
+        # cuda-cutlass/kernel.cu before cuda/binding.cpp. Keep frozen hashes.
+        for entry in sorted(row["entries"], key=lambda entry: Path(entry["path"])):
             if entry["kind"] == "file":
                 digest.update(entry["path"].encode() + b"\0")
                 digest.update(str(entry["mode"]).encode() + b"\0")

@@ -171,23 +171,36 @@ def prepare_selection(selection, invocation, configuration=None):
     if resources is not None:
         if resources.name != "aka.resources.plugin":
             raise ValueError("Schema requires explicit native Resources selection")
-        replacements["resources"] = replace(resources, config={"plugins": [], "bundles": []})
     composition = replace(selection.composition,
         rows=tuple(replacements.get(item.id, item) for item in selection.composition.rows))
-    # These are the stock launch profile's dynamic Wiki manifest roots. The
-    # Schema selection replaced that resource slot with fixed packaged inputs,
-    # so capture must not visit a source checkout that is no longer selected.
+    # Preserve the native Resources configuration and its identity. Only a
+    # selection with no external plugins/catalog can omit the stock profile's
+    # unused Wiki roots. Custom plugins may themselves depend on those roots.
     repo_root = selection.composition.variables.get("repo_root")
-    wiki_roots = {Path(repo_root) / path for path in ("plugins/gpu-wiki", "gpu-wiki")} if repo_root else set()
+    no_plugins = (resources is not None and not resources.config.get("plugins")
+                  and not resources.config.get("plugin_dir"))
+    wiki_roots = ({Path(repo_root) / path for path in ("plugins/gpu-wiki", "gpu-wiki")}
+                  if repo_root and no_plugins else set())
     retained_resources = []
     retained_submodules = {}
-    for root, paths in selection.resources:
-        paths = tuple(path for path in paths if (root / path) not in wiki_roots)
+    imports = tuple(path.resolve() for path in selection.python_paths)
+    for root, original_paths in selection.resources:
+        removed = tuple(path for path in original_paths if (root / path) in wiki_roots
+            and not any(directory == root.resolve() or directory.is_relative_to((root / path).resolve())
+                        for directory in imports))
+        paths = tuple(path for path in original_paths if path not in removed)
+        pins = selection.submodules.get(str(root), {})
+        retained_pins = {name: sha for name, sha in pins.items()
+            if not any(Path(name).is_relative_to(Path(path)) for path in removed)
+            or any(Path(name).is_relative_to(Path(path)) or Path(path).is_relative_to(Path(name))
+                   for path in paths)}
+        if not paths and retained_pins:
+            # An independent pin still selects this resource declaration.
+            paths, retained_pins = original_paths, pins
         if paths:
             retained_resources.append((root, paths))
-            pinned = selection.submodules.get(str(root), {})
-            retained_submodules[str(root)] = {name: sha for name, sha in pinned.items()
-                if any(Path(name).is_relative_to(Path(path)) for path in paths)}
+            if str(root) in selection.submodules:
+                retained_submodules[str(root)] = retained_pins
     launch = replace(launch, request=replace(request, settings=settings),
         provided_settings=None if explicit is None else tuple(sorted(set(explicit) | set(updates))))
     return replace(selection, composition=composition, resources=tuple(retained_resources),

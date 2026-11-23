@@ -1,12 +1,14 @@
 # Schema 实施与运行验证记录
 
-记录截至 2026-11-23。资格反馈、执行事实纠错及历史 Device 标签兼容已随 `20dcc9e` 发行；配对 kernel 起点修复已随 `8bf09c1` 通过四包独立安装验证，vector 已同根接续该发行。GEMM 的真实 E 已读取旧资格反馈、发表三叶事实纠错 v2，新 D 实际收到 v2；完整 10 shape Eval45/46 均 PASS，但该 source 尚无 Schema seal、独立资格或 acceptance，连续 72 小时有效稳定仍未完成。
+记录截至 2026-11-23。两条真实原根现均接续 `c2e635e`：vector 的 v5/Episode13 和 GEMM 的 v2/Episode6 已分别完成独立资格与正式 acceptance，随后继续原生 D/E 探索。连续 72 小时有效稳定仍未完成；当前发行未重跑 fresh C，无 SOTA 的 design 证据来自旧发行。
+
+本次 native Resources 修复已通过最终源码独审与 CPU 验证：保留 D 的原生客户端、Skills 及完整 boot 贡献，Planner 仍只读 Schema 材料；合法 Skill 快照按原生成顺序恢复，篡改及旧锁不匹配继续拒绝。此补丁尚未部署到 live，独立安装和持久接续验证须另行记录，不能用 CPU 原型代替新进程恢复或长期运行证据。
 
 配对起点修复只影响未来新 E；旧已冻结 GEMM a11/v2 的 seed、intent 和费用保持。新 Schema 仍须重新资格，合法 fail/unknown draft 可作实现起点，不能继承资格。
 
 GEMM 原 Episode5 的 Coder 超时后自然异常退出：远端 Eval 已 cancelled，原取消确认失败使 native logical record 和两条 Schema permit 保持 unknown。此次修复新增精确原绑定的公开取消结算：只对原 Job 做一次禁止重定向、无 artifact 下载的 GET；显式清理或身份冲突继续拒绝。合法确认保留全部原 physical attempt、请求、费用和原 envelope，只追加查询证据并结清 logical record 与对应 permits，不产生新测量、资格或晋升。正常返回、startup 和公开 `resume_after_repair(campaign=original)` 共用该路径。
 
-该修复已通过最终源码独审：12 个 loopback、6 个联网前拒绝、24 个事故原件私有副本、3 个真实时钟 CPU 公共恢复场景及 10 个兼容回归分别通过；这些计数不合并为真实 GPU 证据。本记录时点尚未执行原 GEMM 的公开恢复。发行安装与 fresh admission 仍须单独核验；异常恢复不能套用正常窗口停止条件，也不能手改 state、丢弃 unknown 或把旧 Eval PASS 转为候选。详细依据见 N 的 `final-audit-cancelled-eval-confirmation.md`。
+取消结算修复已随 `c2e635e` 通过四包独立安装及 fresh admission，原 GEMM 已经公开恢复到下一 Episode。恢复保留旧 physical unknown、归档和费用，仅结清已核实的 logical record 与 permits；恢复本身没有产生测量或晋升。后续 Episode6 另行完成资格与正式验证。源码、安装与恢复证据分别见 N 的 `final-audit-cancelled-eval-confirmation.md`、`release-cancelled-eval-recovery.md` 和 `resume-gemm-cancelled-eval-live.md`。
 
 ## 目标与证据边界
 
@@ -33,8 +35,8 @@ GEMM 原 Episode5 的 Coder 超时后自然异常退出：远端 Eval 已 cancel
 
 | 路径 | 已保留事实 | 当前限制 |
 | --- | --- | --- |
-| 有 SOTA 的 vector | 原根发布 v2；首个 D 完成资格与正式 acceptance，候选 7.2518 μs、基线 7.5445 μs，原生聚合改善约 4.04%。同 v2 四 Episode 窗口结束后自动进入 E，发布精确 parent 的 v3，再进入 D；后续保留快照已至 v4。 | 首个 optimize → D 窗口 → E → 新版本 → D 已真实走通。后续资格 pass 而 accepted=false 的候选保留为 draft，champion 不变；探索 ABBA 和跨记录 unknown 不能冒充正式提升。尚未完成 72 小时观察。 |
-| 无 SOTA 的 GEMM | 经多次 writer 失败后发布 design v1，原控制器进入多个 D。首个新源全 Task Eval 为 10 shapes、完整/PASS、193.3558 μs。Episode2 实际提交 candidate_ready，但独立资格为 fail，绑定其精确 sealed source，未晋升；789 后继继续 D。 | 尚未证明无 SOTA 的完整 design → D → E → D 有效重复链。原 v1 的 Hardware/Tile_pipeline fail 与费用保持；Eval PASS、正常退出和 candidate_ready 均不等于 Schema 符合性。 |
+| 有 SOTA 的 vector | 原根持续 optimize → D → E → D，v5/Episode13 的 source `83fc180f` 完成独立六义务 PASS；正式 Eval69 完整 3 shapes/4 runs PASS，6.8233 μs 对 6.8781 μs，原生改善约 0.803%，accepted=true。随后健康接续 c2e 并继续 D，后续自然 pivot 不算新晋升。 | 旧负比较、不完整测量与 unknown 保留，不累加历史改善。尚未完成 72 小时观察。 |
+| 无 SOTA 的 GEMM | 旧发行完成 design v1 → D → E，真实 E 根据旧资格反馈发布 v2。c2e 恢复后的 v2/Episode6 source `66832ab2` 完成独立六义务 PASS；正式 Eval54 完整 10 shapes PASS，462.5123 μs 对 7752.9556 μs，accepted=true。下一 D 已读取反馈，随后自然 pivot 继续。 | fresh C 未在 c2e 重跑；原 v1 fail、旧 unknown 与费用保留。后续基础设施 inconclusive 和单边 Eval PASS 不算 kernel FAIL 或新晋升，长期有效重复改进仍待观察。 |
 
 2026-11-23 05:59:45 UTC 的保留快照确认两条 789 owner 身份正确、零自动重启：vector 已至 v4 的第三窗口，GEMM 仍在 v1 的首个 D 窗口；这不是实时状态声明。两条 789 接续均先由原 owner 停止并真实结清，再经公开 `driver_factory` / `resume_after_repair` 各启动一次；root/config/Task/prepared、旧调用和预算保持。vector 继承原 Episode 余额，GEMM 只为下一 Episode 分配原合同额度，未重置已用预算。该 789 安装不包含下述 `20dcc9e` 修复，不能把新发行的只读接续验证写成已经向 live Coder 送达或完成新版本纠错。
 
@@ -74,8 +76,8 @@ GEMM 原 Episode5 的 Coder 超时后自然异常退出：远端 Eval 已 cancel
 
 上述各阶段完整 **3072 项** prefix 内容/权限/链接 seal 保持一致，AKA cache/pyc 为 0；没有删除缓存、热改安装或更改基准 seal。三组安装 guard 的违规计数均为 0，这不代表整个历史会话的网络或保密保证。不同范围及此前源码批次不累加，未重跑全仓、旧 36 Episode 或全部历史套件；此前红/绿及失败原件保留。
 
-后继准备另以最终安装版对两条实际原根完成只读 strict capture/restore、公开装配及 successor/proof/checker/Contract 门，0 publication、0 原件写入。随后 GEMM 的真实新 E 已读取旧 fail 反馈、发表三叶事实纠错 v2，新 D 输入也已核对；首批 E/D 后完整 3072 项 prefix seal 一致。新 source 的完整 Task Eval、独立资格与测量仍待，精确证据见 N 的 `validate-gemm-schema-closure-live-handoff.md`。
+20dcc 阶段的后继准备曾以最终安装版对两条实际原根完成只读 strict capture/restore、公开装配及 successor/proof/checker/Contract 门，0 publication、0 原件写入。随后 GEMM 的真实新 E 读取旧 fail 反馈、发表三叶事实纠错 v2，新 D 输入也已核对；首批 E/D 后完整 3072 项 prefix seal 一致。当时尚待的新 source 资格和晋升已在上述 c2e 阶段完成；历史交接见 N 的 `validate-gemm-schema-closure-live-handoff.md`。
 
 细节以 N 下五份外置报告为准：`implement-qualification-feedback-delivery.md`、`implement-planner-contract-correction.md`、`integrate-schema-execution-authority.md`、`fix-and-simplify-schema-closure.md`、`fix-legacy-schema-device-label.md`。后两份更新了早期接口和阻塞结论；最终独审见 `final-audit-schema-authority.md`，实际提交/发行及安装版后继准备分别见 `commit-release-schema-closure.md`、`prepare-schema-closure-successors.md`。没有把各阶段增量相加为统一代码或费用总数。
 
-本轮真实后继验收仍未闭环。健康运行的升级须经公开停止与接续；GEMM 本次异常恢复须先核原 owner/进程树退出、锁、完整原 Task/policy/绑定及 fresh 原 Job 终态，再由公开恢复路径结清原归档 Episode。不能写 state 提前 `close_window`；正常窗口仍由原生控制器推进。GEMM 已发表的三叶事实纠错不豁免原 Tile_pipeline fail，CPU 或只读门通过不代表晋升或 72 小时目标达成。
+后续 native Resources 部署仍须经独立安装、持久 helper/新 context 恢复及转换中断窗口验证，再在原 owner 完整停止和结清后按 fresh 门接续。不能写 state 提前 `close_window`，不能宽松旧资源锁或热补已封存 prefix；正常窗口仍由原生控制器推进。当前两次正式晋升不抹去旧 fail、unknown 和费用，也不代表 72 小时目标达成。

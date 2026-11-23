@@ -140,6 +140,7 @@ def install_native_cpu(monkeypatch, directory):
             return value
         campaign.problem_provider.content = content
         runtime = campaign._supervisor_runtime
+        runtime.plugins = campaign._module_resources
         runtime.read_episode_journal = lambda _: {}
         runtime.read_experiment_records = lambda: ()
         runtime.read_episode_draft = lambda episode: campaign.candidate_workspace.read_source(

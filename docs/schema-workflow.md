@@ -81,6 +81,16 @@ Omitting `--schema` leaves normal Light behavior unchanged and does not load the
 Schema parser or assets. Workspaces cannot switch between modes; resume their
 original controller or choose a new workspace.
 
+Schema preserves the native `resources` selection, including bundles and explicit
+plugins/catalogs. Coder receives those tools and Skills through the normal Light
+workspace installer. Planner's retained materials contain only the selected AKA
+Schema documents, starter and Wiki references; they are a separate identity and
+must not be assigned to `workflow.resources` by an embedding launcher. The L20D
+recipe explicitly selects `measurement-session` and `research-records` without
+an external Wiki checkout. Native resource locks from older material-only runs
+remain incompatible with the corrected selection; this change does not migrate
+or rewrite them.
+
 ## Frozen execution facts and Contract corrections
 
 New native Schema operations receive a bounded execution context bound to the

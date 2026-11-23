@@ -30,16 +30,82 @@ def selected(tmp_path):
     return selection, Invocation(encode_launch(launch))
 
 
-def test_continuous_sets_explicit_native_policy_and_removes_unselected_wiki_manifest(tmp_path):
+def test_continuous_sets_native_policy_and_preserves_selected_resources(tmp_path):
     selection, invocation = selected(tmp_path)
     result, request = prepare_selection(selection, invocation, {'continuous': True})
     settings = decode_launch(request.argv).request.settings
     assert settings.max_iters == 0 and settings.framework_baseline == 'never'
     assert settings.convert_after == 0 and settings.setup_timeout == 3600
-    assert result.resources == ()
-    for name in ('agent', 'problem', 'source', 'execution'):
+    assert result.resources == selection.resources
+    assert result.submodules == selection.submodules
+    for name in ('agent', 'problem', 'source', 'execution', 'resources'):
         assert result.composition.row(name) == selection.composition.row(name)
     assert result.composition.row('workflow').name == 'aka.workflow.schema.plugin'
+
+
+def test_no_external_plugins_omit_only_unused_stock_wiki_manifest(tmp_path):
+    selection, invocation = selected(tmp_path)
+    resources = selection.composition.row('resources')
+    configured = replace(resources, config={'plugins': [], 'bundles': ['measurement-session', 'research-records']})
+    selection = replace(selection, composition=replace(selection.composition, rows=tuple(
+        configured if row.id == 'resources' else row for row in selection.composition.rows)),
+        resources=((tmp_path, ('plugins/gpu-wiki', 'gpu-wiki', 'retained-input')),),
+        submodules={str(tmp_path): {'gpu-wiki': 'a' * 40, 'retained-input': 'b' * 40,
+                                    'separate-dependency': 'c' * 40}})
+    result, _ = prepare_selection(selection, invocation, {'continuous': True})
+    assert result.composition.row('resources') == configured
+    assert result.resources == ((tmp_path, ('retained-input',)),)
+    assert result.submodules == {str(tmp_path): {'retained-input': 'b' * 40,
+                                                'separate-dependency': 'c' * 40}}
+
+
+def test_independent_submodule_pin_survives_unchanged_paths_and_capture(tmp_path, monkeypatch):
+    from aka.bootstrap.continuation import capture, restore
+    monkeypatch.setattr('aka.agent.execution.bubblewrap.executable', lambda *args, **kwargs: '/bin/true')
+    monkeypatch.setattr('aka.agent.execution.proc_view.validate_runtime', lambda *args, **kwargs: None)
+    selection, invocation = selected(tmp_path)
+    root = tmp_path / 'other'
+    (root / 'data').mkdir(parents=True)
+    (root / 'data/input.txt').write_text('public CPU input\n')
+    selection = replace(selection, resources=((root, ('data',)),),
+        submodules={str(root): {'retained-dependency': 'a' * 40}},
+        environment={key: None for key in selection.environment})
+    assert selection.composition.row('resources').config['plugins']
+    _, before = capture(selection)
+    assert capture(restore(before))[1] == before
+    transformed, _ = prepare_selection(selection, invocation, {'continuous': True})
+    assert transformed.resources == selection.resources
+    assert transformed.submodules == selection.submodules
+    _, after = capture(transformed)
+    assert capture(restore(after))[1] == after
+
+
+@pytest.mark.parametrize('relative', ['', 'gpu-wiki', 'gpu-wiki/imports'])
+def test_selected_python_paths_keep_their_resource_manifest_for_restore(tmp_path, monkeypatch, relative):
+    from aka.bootstrap.continuation import capture, restore
+    (tmp_path / 'plugins/gpu-wiki').mkdir(parents=True)
+    (tmp_path / 'gpu-wiki').mkdir()
+    imports = tmp_path / relative
+    imports.mkdir(parents=True, exist_ok=True)
+    (imports / 'selected_cpu_module.py').write_text('VALUE = 1\n')
+    profile = json.loads(profile_path('light-sandbox').read_text())
+    profile['python_paths'] = [str(imports)]
+    path = tmp_path / 'profile.json'
+    path.write_text(json.dumps(profile))
+    (tmp_path / 'compositions').symlink_to(profile_path('light-sandbox').parent / 'compositions')
+    selection = resolve_profile(path, patches=[{'id': 'resources', 'config': {
+        'plugins': [], 'bundles': ['measurement-session', 'research-records']}}],
+        variables={'repo_root': str(tmp_path)})
+    selection = replace(selection, environment={key: None for key in selection.environment})
+    monkeypatch.setattr('aka.agent.execution.bubblewrap.executable', lambda *args, **kwargs: '/bin/true')
+    monkeypatch.setattr('aka.agent.execution.proc_view.validate_runtime', lambda *args, **kwargs: None)
+    _, before = capture(selection)
+    assert capture(restore(before))[1] == before
+    _, invocation = selected(tmp_path)
+    transformed, _ = prepare_selection(selection, invocation, {'continuous': True})
+    _, after = capture(transformed)
+    assert capture(restore(after))[1] == after
+    assert transformed.python_paths == selection.python_paths
 
 
 def test_continuous_preserves_explicit_finite_native_budget(tmp_path):

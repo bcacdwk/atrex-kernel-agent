@@ -1,6 +1,9 @@
 {
   "api_version": 1,
   "patches": [
+    {"id": "resources", "config": {
+      "plugins": [], "bundles": ["measurement-session", "research-records"]
+    }},
     {"id": "agent", "config": {
       "sandbox": "bwrap", "proc_mode": "projected", "timeout_seconds": 3600
     }},

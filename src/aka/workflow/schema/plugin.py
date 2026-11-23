@@ -32,8 +32,12 @@ def apply(ctx, config):
     from .workflow import SchemaWorkflow, SotaStart, SuppliedStart
 
     selected = SchemaConfig.load(config["schema"])
-    resources = PluginRegistry(plugin_dir="", resources=select_materials(wiki_ids=selected.wiki_ids),
+    materials = PluginRegistry(plugin_dir="", resources=select_materials(wiki_ids=selected.wiki_ids),
                                agent_skills=(), plugins=())
+    # Planner inputs and native Coder capabilities have different owners.
+    # Borrow the same public Resources selection as ordinary Light; never put
+    # executable tools/Skills into the Planner's retained materials snapshot.
+    resources = PluginRegistry()
     planner_options = dict(selected.planner)
     policy = CheckPolicy(**planner_options.pop("check_policy", {}))
     initial = None
@@ -52,6 +56,12 @@ def apply(ctx, config):
             selected.sota["target_gpu"], selected.sota["target_hardware"])
 
     def driver_factory(request):
+        from aka.resources.wiki.providers import selected_provider
+        # Boot may apply contributing modules after Workflow. Resolve the full
+        # native selection at the same request boundary as ordinary Light.
+        if selected_provider() is not None:
+            raise ValueError("Driven Light requires explicit resources without a dynamic Wiki provider")
+        workflow.resources = PluginRegistry()
         settings = request.settings
         limits = dict(selected.limits)
         total_fields = ("max_windows", "max_episodes", "max_agent_calls", "max_dispatches", "max_agent_active_seconds", "max_tokens")
@@ -68,7 +78,7 @@ def apply(ctx, config):
             raise ValueError("Planner timeout exceeds the Schema single-call allowance")
         identity = hashlib.sha256(str(request.workspace.absolute()).encode()).hexdigest()
         retained = request.workspace.parent / ".aka-schema-inputs" / identity
-        snapshot = resources.export_snapshot(retained / "materials")
+        snapshot = materials.export_snapshot(retained / "materials")
         planner = Planner(ctx.agent, snapshot, config=planner_config)
         return SchemaWorkflow(request.workspace / ".atrex_long_horizon" / "schema",
             planner=planner, executor=ctx.executor, workspace=request.workspace,

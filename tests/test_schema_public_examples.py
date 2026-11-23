@@ -33,6 +33,8 @@ def test_public_recipe_resolves_without_dynamic_wiki_checkout(tmp_path, name):
         provided_settings=("platform", "framework"))
     selected, invocation = prepare_selection(selection, Invocation(encode_launch(launch)), config_path)
     assert selected.resources == ()
+    assert selected.composition.row("resources") == selection.composition.row("resources")
+    assert selected.composition.row("resources").config["bundles"] == ["measurement-session", "research-records"]
     assert selected.composition.row("workflow").name == "aka.workflow.schema.plugin"
     assert selected.composition.row("execution").config == {"profile": "legacy", "measurement_parallelism": 1}
     request = decode_launch(invocation.argv).request
