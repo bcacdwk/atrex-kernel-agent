@@ -54,6 +54,230 @@ def revised_record(h, monkeypatch, record):
     monkeypatch.setattr(h.records, "get", lambda ref: record if ref == h.record.ref else original(ref))
 
 
+def revised_receipt(h, monkeypatch, body):
+    raw = json.dumps(body).encode()
+    attempt = h.record.attempts[-1]
+    record = replace(h.record, attempts=(*h.record.attempts[:-1],
+        replace(attempt, result=replace(attempt.result, stdout=raw.decode()))))
+    revised_record(h, monkeypatch, record)
+    return replace(h.evidence, raw=raw, raw_sha256=sha256(raw), record_sha256=digest(record.as_dict()))
+
+
+@pytest.mark.parametrize("dsl", ["triton", "cuda", "unknown", None, "missing"])
+@pytest.mark.parametrize("summary", [None, {}, {"gpu": "L20D"}, {"num_gpus": 1}, "missing"])
+def test_optional_job_echoes_preserve_owned_runtime_facts(prepared_native, monkeypatch, dsl, summary):
+    h = prepared_native
+    body = json.loads(h.evidence.raw)
+    if dsl == "missing":
+        body["result"].pop("dsl")
+    else:
+        body["result"]["dsl"] = dsl
+    if summary == "missing":
+        body.pop("request_digest")
+    else:
+        body["request_digest"] = summary
+    evidence = revised_receipt(h, monkeypatch, body)
+    document = automatic(h).as_dict()
+    assert document["architecture"] == {"value": "sm_103", "source": "observed",
+        "evidence_sha256": evidence.raw_sha256}
+    assert document["toolchain"]["source"] == "observed" and document["toolchain"]["value"] == "3.7.1"
+    assert document["selected_framework"] == {"value": "triton", "source": "configured",
+        "evidence_sha256": digest(h.prepared["native_policy"])}
+    assert all(item["status"] == "unknown" for item in document["task_constraints"].values())
+    assert execution_context(campaign=h.campaign, prepared=h.prepared, executor=h.executor,
+        directory=h.directory, retained_job=evidence).as_dict() == document
+
+
+@pytest.mark.parametrize("field,value", [
+    ("request_digest", []), ("request_digest", "unknown"), ("request_digest", False),
+    ("request_digest", 1), ("request_digest", {"gpu": "A100"}),
+    ("request_digest", {"gpu": None}), ("request_digest", {"num_gpus": 2}),
+    ("request_digest", {"num_gpus": True}), ("request_digest", {"kind": "dev"}),
+    ("request_digest", {"timeout_s": 99}), ("dsl", []), ("dsl", ""),
+    ("num_gpus", True), ("kind", "dev"), ("mode", "correctness_only"),
+    ("solution", {"source": {"type": "inline", "files": {"kernel.py": "0" * 64}}}),
+])
+def test_optional_echoes_still_reject_malformed_or_conflicting_values(prepared_native, monkeypatch, field, value):
+    h = prepared_native
+    body = json.loads(h.evidence.raw)
+    body["request_digest"] = None
+    body["result"]["dsl"] = "unknown"
+    (body["result"] if field == "dsl" else body)[field] = value
+    revised_receipt(h, monkeypatch, body)
+    with pytest.raises(ValueError):
+        automatic(h)
+
+
+@pytest.mark.parametrize("name", ["input.py", "shapes.json", "candidate.py", "reference.py", "metadata.json"])
+@pytest.mark.parametrize("missing", [False, True])
+def test_unknown_echoes_require_every_original_source_hash(prepared_native, monkeypatch, name, missing):
+    h = prepared_native
+    body = json.loads(h.evidence.raw)
+    body["request_digest"] = None
+    body["result"]["dsl"] = "unknown"
+    hashes = body["result"]["shape_selection"]["source_hashes"]
+    if missing:
+        hashes.pop(name)
+    else:
+        hashes[name] = "0" * 64
+    revised_receipt(h, monkeypatch, body)
+    with pytest.raises(ValueError):
+        automatic(h)
+
+
+@pytest.mark.parametrize("damage", ["old-attempt", "failed", "partial", "failed-assessment", "partial-assessment",
+                                    "failed-record", "unsettled-facts"])
+def test_explicit_unknown_echoes_cannot_bypass_completed_latest_measurement(prepared_native, monkeypatch, damage):
+    h = prepared_native
+    body = json.loads(h.evidence.raw)
+    body["request_digest"] = None
+    body["result"]["dsl"] = "unknown"
+    if damage == "partial":
+        body["result"]["shape_selection"]["partial"] = True
+    evidence = revised_receipt(h, monkeypatch, body)
+    record = h.records.get(h.record.ref)
+    attempt = record.attempts[-1]
+    if damage == "old-attempt":
+        reference, = attempt.result.job_references
+        latest = replace(attempt, attempt_id="newer-attempt", result=replace(attempt.result,
+            job_references=(replace(reference, identifier="newer-job"),)))
+        record = replace(record, attempts=(*record.attempts, latest))
+    elif damage == "failed":
+        record = replace(record, attempts=(replace(attempt,
+            result=replace(attempt.result, transport_status="failed", exit_code=1)),))
+    elif damage == "failed-record":
+        record = replace(record, outcome="failed")
+    elif damage == "unsettled-facts":
+        record = replace(record, attempts=(replace(attempt, result=replace(attempt.result,
+            facts=replace(attempt.result.facts, disposition="unknown"))),))
+    elif damage.endswith("assessment"):
+        assessment = replace(attempt.assessment, **({"validity": "invalid"} if damage == "failed-assessment"
+            else {"completeness": "partial", "observed": attempt.assessment.observed[:-1],
+                  "missing": attempt.assessment.observed[-1:]}))
+        record = replace(record, attempts=(replace(attempt, assessment=assessment),))
+    revised_record(h, monkeypatch, record)
+    evidence = replace(evidence, record_sha256=digest(record.as_dict()))
+    with pytest.raises(ValueError):
+        execution_context(campaign=h.campaign, prepared=h.prepared, executor=h.executor,
+            directory=h.directory, retained_job=evidence)
+
+
+@pytest.mark.parametrize("damage", [None, "body-key", "association-key", "association-reference",
+    "physical-key", "physical-wire", "physical-owner", "physical-job", "projected-key", "intent-key", "intent-input"])
+def test_slim_receipt_preserves_complete_native_owner_chain(prepared_native, monkeypatch, damage):
+    from aka.contracts.execution import ExecutionAttempt, ResourceIdentity
+    from aka.contracts.experiment import ExperimentArtifact
+    h = prepared_native
+    attempt = h.record.attempts[-1]
+    ref, = attempt.result.job_references
+    body = json.loads(h.evidence.raw)
+    body["request_digest"] = None
+    body["result"]["dsl"] = "unknown"
+    if damage == "body-key":
+        body["idempotency_key"] = "other-key"
+    raw = json.dumps(body).encode()
+    physical_attempt = ExecutionAttempt("run", "terminal", ResourceIdentity(ref.backend, ref.identifier),
+        attempt_id="physical-v0", idempotency_key=ref.idempotency_key, request_identity=ref.request_identity)
+    result = replace(attempt.result, stdout=raw.decode(), attempts=(physical_attempt,))
+    documents = {role: json.loads(h.records.read_artifact(next(a for a in h.record.artifacts if a.role == role)))
+        for role in ("live_eval_association", "submission_intent")}
+    link = documents["live_eval_association"]
+    link.update(idempotency_key=ref.idempotency_key, job_reference=result.as_dict()["job_references"][0],
+                physical_attempts=[physical_attempt.attempt_id])
+    physical = documents["live_eval_physical"] = {"identity": {key: link[key] for key in
+        ("attempt_id", "idempotency_key", "request_identity", "route_identity", "namespace_identity")},
+        "result": result.as_dict()}
+    if damage == "association-key":
+        link["idempotency_key"] = "other-key"
+    elif damage == "association-reference":
+        link["job_reference"]["request_identity"] = "0" * 64
+    elif damage in {"physical-key", "physical-wire", "physical-owner"}:
+        field = {"physical-key": "idempotency_key", "physical-wire": "request_identity",
+                 "physical-owner": "attempt_id"}[damage]
+        physical["identity"][field] = "other-owner"
+    elif damage == "physical-job":
+        physical["result"]["attempts"][0]["resource"]["identifier"] = "another-job"
+    elif damage == "projected-key":
+        result = replace(result, attempts=(replace(physical_attempt, idempotency_key="other-key"),))
+    elif damage in {"intent-key", "intent-input"}:
+        documents["submission_intent"]["idempotency_key" if damage == "intent-key" else "submission_sha256"] = "0" * 64
+    artifacts = tuple(a for a in h.record.artifacts if a.role not in documents)
+    content = {role: json.dumps(value).encode() for role, value in documents.items()}
+    artifacts += tuple(ExperimentArtifact(h.record.ref, role, role, sha256(raw), len(raw))
+        for role, raw in content.items())
+    read_artifact = h.records.read_artifact
+    def read(artifact):
+        if artifact.artifact_id not in content:
+            return read_artifact(artifact)
+        raw = content[artifact.artifact_id]
+        assert sha256(raw) == artifact.sha256
+        return raw
+    monkeypatch.setattr(h.records, "read_artifact", read)
+    record = replace(h.record, artifacts=artifacts, attempts=(replace(attempt, result=result),))
+    revised_record(h, monkeypatch, record)
+    if damage is None:
+        assert automatic(h).as_dict()["architecture"]["source"] == "observed"
+    else:
+        with pytest.raises(ValueError):
+            automatic(h)
+
+
+def test_explicit_frozen_language_constraint_is_not_a_static_dsl_hint(prepared_native):
+    from aka.workflow.schema._native import _job_facts
+    h = prepared_native
+    h.prepared["native_policy"]["framework"] = "Cuda"
+    with pytest.raises(ValueError, match="declared languages conflict"):
+        _job_facts(h.evidence, records=h.records, campaign=h.campaign,
+            prepared=h.prepared, route=h.executor._environment_backend())
+
+
+@pytest.mark.parametrize("failure", [None, "correctness", "shape-correctness", "compile", "error", "missing-timing"])
+def test_explicit_job_result_cannot_borrow_a_passing_record_assessment(prepared_native, failure):
+    h = prepared_native
+    body = json.loads(h.evidence.raw)
+    body["request_digest"] = None
+    body["result"]["dsl"] = "unknown"
+    result = body["result"]
+    if failure in {"correctness", "compile"}:
+        result["passed"][failure] = False
+    elif failure == "shape-correctness":
+        result["passed"]["correctness"]["0"] = {"status": "failed"}
+    elif failure == "error":
+        result["error"] = "synthetic worker failure"
+    elif failure == "missing-timing":
+        result["performance"]["shapes"].pop("0")
+    raw = json.dumps(body).encode()
+    evidence = replace(h.evidence, raw=raw, raw_sha256=sha256(raw))
+    # The record and its assessment remain the original PASS. Only the supplied
+    # GET bytes differ; neither body.succeeded nor that old PASS can erase this
+    # receipt's own native result verdict.
+    assert h.records.get(h.record.ref).evaluation.gate == "PASS"
+    if failure is None:
+        context = execution_context(campaign=h.campaign, prepared=h.prepared, executor=h.executor,
+            directory=h.directory, retained_job=evidence)
+        assert context.as_dict()["architecture"]["source"] == "observed"
+    else:
+        with pytest.raises(ValueError):
+            execution_context(campaign=h.campaign, prepared=h.prepared, executor=h.executor,
+                directory=h.directory, retained_job=evidence)
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_completed_attempt_requires_one_run_job_owner(prepared_native, monkeypatch, explicit):
+    h = prepared_native
+    attempt = h.record.attempts[-1]
+    reference, = attempt.result.job_references
+    record = replace(h.record, attempts=(replace(attempt, result=replace(attempt.result,
+        job_references=(reference, replace(reference, identifier="another-run-job")))),))
+    revised_record(h, monkeypatch, record)
+    with pytest.raises(ValueError):
+        if explicit:
+            execution_context(campaign=h.campaign, prepared=h.prepared, executor=h.executor,
+                directory=h.directory, retained_job=replace(h.evidence, record_sha256=digest(record.as_dict())))
+        else:
+            automatic(h)
+
+
 @pytest.mark.parametrize("damage", ["run", "task", "task-bytes", "prepared-source", "receipt-source", "route", "namespace",
                                    "framework", "job-owner", "architecture"])
 def test_conflicting_preparation_receipt_cannot_gain_authority(prepared_native, monkeypatch, damage):
@@ -165,7 +389,7 @@ def test_snapshot_fallback_retains_native_record_precedence(prepared_native, mon
     assert document["architecture"]["source"] == "cache"
 
 
-def install_recorded_preparation(harness, monkeypatch):
+def install_recorded_preparation(harness, monkeypatch, *, dsl="triton", slim=False):
     """Fake only the CPU evaluator/transport below actual public preparation."""
     from aka.evaluation.gateway_command import GatewayCommandEvaluator
     from aka.execution.gateway.requests import operation_request
@@ -214,8 +438,8 @@ def install_recorded_preparation(harness, monkeypatch):
                 if name in {"input.py", "reference.py", "metadata.json", "shapes.json"}}
             hashes["candidate.py"] = sha256(wire["candidate"].encode())
             raw = json.dumps({"job_id": ref.identifier, "status": "succeeded", "num_gpus": 1,
-                "request_digest": {"gpu": "NVIDIA L20D", "num_gpus": 1},
-                "result": {**raw_evaluation(), "dsl": "triton",
+                "request_digest": None if slim else {"gpu": "NVIDIA L20D", "num_gpus": 1},
+                "result": {**raw_evaluation(), "dsl": dsl,
                     "environment": {"gpu_name": "NVIDIA L20D", "gpu_arch": "sm_103", "triton_version": "3.7.1"},
                     "shape_selection": {"all_shape_ids": list(campaign.problem.evaluation.case_ids),
                         "partial": False, "source_hashes": hashes}}})
@@ -239,7 +463,7 @@ def test_public_cli_uses_own_complete_v0_before_first_planner(tmp_path, monkeypa
     from aka.bootstrap import workflow_cli
     from schema_public_fixture import install_native_cpu, schema_config
     harness = install_native_cpu(monkeypatch, tmp_path)
-    receipts = install_recorded_preparation(harness, monkeypatch)
+    receipts = install_recorded_preparation(harness, monkeypatch, dsl="triton" if paired else "unknown", slim=True)
     monkeypatch.setenv("ANTHROPIC_MODEL", "qwen3.8-max[1m]")
     configuration = tmp_path / "schema.json"
     configuration.write_text(json.dumps(schema_config(harness, paired=paired, episodes=1)))
@@ -267,6 +491,8 @@ def test_public_cli_uses_own_complete_v0_before_first_planner(tmp_path, monkeypa
     context = json.loads(frozen["execution_context"])
     assert context["architecture"] == {"value": "sm_103", "source": "observed", "evidence_sha256": sha256(receipts[0])}
     assert context["toolchain"]["source"] == "observed" and context["toolchain"]["value"] == "3.7.1"
+    assert context["selected_framework"]["source"] == "configured"
+    assert state["episodes"]["1"]["binding"]["execution_context_sha256"] == frozen["execution_context_sha256"]
     assert all(item["status"] == "unknown" for item in context["task_constraints"].values())
     assert "contract_correction_sha256" not in frozen
     artifact = read_design(DesignRef.from_dict(state["design"]))

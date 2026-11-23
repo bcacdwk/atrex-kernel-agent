@@ -163,12 +163,23 @@ def _job_facts(evidence, *, records, campaign, prepared, route):
         raise ValueError("retained Job is not the exact completed native owner")
     attempt, ref = matches[0]
     step = next(item for item in record.steps if item.task_id == attempt.task_id)
+    latest = {item.task_id: item for item in record.attempts}
+    if (attempt != latest[attempt.task_id] or attempt.result.transport_status != "succeeded"
+            or len([item for item in attempt.result.job_references if item.operation == "run"]) != 1
+            or attempt.assessment is None or attempt.assessment.validity != "valid"
+            or attempt.assessment.completeness != "complete"
+            or attempt.assessment.identity != step.measurement_identity
+            or attempt.result.facts.disposition != "terminal" or record.outcome != "completed"
+            or record.phase != "complete" or record.evaluation is None or record.evaluation.gate != "PASS"):
+        raise ValueError("retained Job is not the latest complete successful native measurement")
     _validate_snapshot(attempt.result.environment_snapshot, target=prepared["hardware"], route=route)
     if (attempt.disposition != "terminal" or ref.operation != "run" or not ref.idempotency_key
-            or ref.endpoint != route.endpoint or body.get("num_gpus") != record.request.get("num_gpus")):
+            or ref.endpoint != route.endpoint or type(body.get("num_gpus")) is not int
+            or body.get("num_gpus") != record.request.get("num_gpus")
+            or body.get("idempotency_key", ref.idempotency_key) != ref.idempotency_key):
         raise ValueError("retained Job route or allocation differs from native request")
     documents = {role: [json.loads(records.read_artifact(item)) for item in record.artifacts if item.role == role]
-                 for role in ("evaluation_input", "live_eval_association")}
+                 for role in ("evaluation_input", "live_eval_association", "submission_intent", "live_eval_physical")}
     associations = [item for item in documents["live_eval_association"]
         if item.get("attempt_id") == attempt.attempt_id and item.get("terminal") is True
         and item.get("job_reference", {}).get("identifier") == ref.identifier
@@ -177,6 +188,41 @@ def _job_facts(evidence, *, records, campaign, prepared, route):
         and item.get("namespace_identity") == wire_digest(route.environment.get("AGATE_AK", ""))]
     if len(associations) != 1 or not route.environment.get("AGATE_AK"):
         raise ValueError("retained Job lacks its exact native route/namespace association")
+    association, = associations
+    reference = next(item for item in attempt.result.as_dict()["job_references"] if item["identifier"] == ref.identifier)
+    if (association.get("idempotency_key", ref.idempotency_key) != ref.idempotency_key
+            or any(key not in reference or reference[key] != value
+                   for key, value in association["job_reference"].items())):
+        raise ValueError("retained Job association contradicts its native owner")
+    # Modern live owners also retain their pre-projection physical receipts.
+    # Preserve older adapters' absence of this history, but never ignore a
+    # present key, wire identity or Job that contradicts the same association.
+    physical = [item for item in documents["live_eval_physical"]
+                if item.get("identity", {}).get("attempt_id") == attempt.attempt_id]
+    if physical or attempt.result.attempts or "physical_attempts" in association:
+        identity = {"attempt_id": attempt.attempt_id, "idempotency_key": ref.idempotency_key,
+            **{name: association[name] for name in ("request_identity", "route_identity", "namespace_identity")}}
+        ids = [item.attempt_id for item in attempt.result.attempts]
+        if (not ids or None in ids or len(set(ids)) != len(ids)
+                or association.get("physical_attempts") != ids or len(physical) != len(ids)):
+            raise ValueError("retained Job physical history differs from its native owner")
+        for item, physical_id in zip(physical, ids):
+            raw = item.get("result", {})
+            receipts = raw.get("attempts", ())
+            if (item.get("identity") != identity or len(receipts) != 1
+                    or receipts[0].get("attempt_id") != physical_id
+                    or receipts[0].get("operation") != "run"
+                    or receipts[0].get("idempotency_key") != ref.idempotency_key
+                    or receipts[0].get("request_identity") != ref.request_identity
+                    or receipts[0].get("resource") not in ({"backend": ref.backend, "identifier": None},
+                        {"backend": ref.backend, "identifier": ref.identifier})
+                    or any(value != reference for value in raw.get("job_references", ()))):
+                raise ValueError("retained Job physical receipt contradicts its native owner")
+        if any(item.operation != "run" or item.idempotency_key != ref.idempotency_key
+               or item.request_identity != ref.request_identity or item.resource is None
+               or item.resource.backend != ref.backend or item.resource.identifier != ref.identifier
+               for item in attempt.result.attempts):
+            raise ValueError("retained Job projected receipt contradicts its native owner")
     requests = []
     for original in documents["evaluation_input"]:
         if original.get("kind") != "run" or original.get("schema_version") != 1:
@@ -189,26 +235,74 @@ def _job_facts(evidence, *, records, campaign, prepared, route):
     if len(requests) != 1:
         raise ValueError("retained Job request does not match the original native input")
     original = requests[0]
+    if (body.get("kind", "eval") != "eval"
+            or "mode" in body and body["mode"] != original["request"].get("mode")):
+        raise ValueError("retained Job kind or mode contradicts its frozen request")
+    intents = [item for item in documents["submission_intent"] if item.get("attempt_id") == attempt.attempt_id]
+    if documents["submission_intent"]:
+        input_hashes = {item.sha256 for item in record.artifacts if item.role == "evaluation_input"
+                        and json.loads(records.read_artifact(item)) == original}
+        if (len(intents) != 1 or intents[0].get("submission_sha256") not in input_hashes
+                or intents[0].get("idempotency_key") != ref.idempotency_key
+                or intents[0].get("operation") != "run" or intents[0].get("timeout") != step.timeout):
+            raise ValueError("retained Job submission intent contradicts its frozen request")
     framework = framework_key(prepared["native_policy"]["framework"])
+    languages = original["request"]["spec"].get("languages", [])
+    if (not isinstance(languages, list) or any(not isinstance(item, str) for item in languages)
+            or languages and framework not in {framework_key(item) for item in languages}):
+        raise ValueError("retained Job declared languages conflict with the selected framework")
     result = body.get("result", {})
     environment = result.get("environment", {})
-    summary = body.get("request_digest", {})
+    # GET's include_spec echo is optional, including explicit null in slim
+    # native receipts. Ownership comes from the frozen wire/association above;
+    # supplied echoes still cannot contradict that original request.
+    summary = body.get("request_digest")
+    if summary is not None and not isinstance(summary, Mapping):
+        raise ValueError("retained Job request summary is not an object")
+    summary = summary or {}
+    expected_summary = {"num_gpus": record.request.get("num_gpus"), "kind": "eval", "timeout_s": step.timeout}
+    if ("gpu" in summary and _device(summary["gpu"]) != _device(prepared["hardware"])
+            or any(name in summary and (type(summary[name]) is not type(value) or summary[name] != value)
+                   for name, value in expected_summary.items())):
+        raise ValueError("retained Job request summary contradicts the native request")
     shape = result.get("shape_selection", {})
-    if (not isinstance(result.get("dsl"), str) or framework_key(result["dsl"]) != framework
+    # The evaluator's DSL field is static candidate-source classification. An
+    # different/unknown classification says nothing about the independently collected
+    # worker hardware/package versions. Selection remains configured in the
+    # public context; no executed DSL is inferred from these environment facts.
+    dsl = result.get("dsl")
+    if (dsl is not None and (not isinstance(dsl, str) or not dsl.strip())
             or _device(environment.get("gpu_name")) != _device(prepared["hardware"])
-            or _device(summary.get("gpu")) != _device(prepared["hardware"])
-            or summary.get("num_gpus") != record.request.get("num_gpus")
             or set(shape.get("all_shape_ids", ())) != {point.shape_id for point in step.measurement_identity.points}
             or shape.get("partial") is not False):
         raise ValueError("retained Job Task, target or selected framework is inapplicable")
+    # An explicit GET is a separate raw receipt. Reuse native Evaluation's
+    # parser with the original Task metadata/mode; the record's prior PASS
+    # cannot override a failed or incomplete result in these retained bytes.
+    from aka.evaluation.transport_results import _optimizer_result_from_eval
+    verdict = _optimizer_result_from_eval(result,
+        list(dict.fromkeys(point.shape_id for point in step.measurement_identity.points)),
+        original["request"]["reference"].get("metadata"),
+        require_performance=original["request"].get("mode") != "correctness_only", hardware=prepared["hardware"])
+    if verdict.get("all_pass") is not True:
+        raise ValueError("retained Job result is not a complete native PASS")
     sources = [records.read_source(item) for item in record.artifacts if item.role == "candidate-source"]
-    if len(sources) != 1 or sources[0].files.get("kernel.py") is None:
+    required = {"input.py", "reference.py", "metadata.json", "shapes.json"}
+    if (len(sources) != 1 or sources[0].files.get("kernel.py") is None
+            or sources[0].files["kernel.py"] != original["request"]["candidate"].encode()
+            or not required <= original["reference_files"].keys()):
         raise ValueError("retained Job candidate source owner is unavailable")
     expected = {name: sha256(raw.encode()) for name, raw in original["reference_files"].items()
-                if name in {"input.py", "reference.py", "metadata.json", "shapes.json"}}
+                if name in required}
     expected["candidate.py"] = sha256(sources[0].files["kernel.py"])
     if shape.get("source_hashes") != expected:
         raise ValueError("retained Job source/Task hashes differ from native artifacts")
+    solution = body.get("solution")
+    if solution is not None:
+        descriptor = solution.get("source") if isinstance(solution, Mapping) else None
+        if (not isinstance(descriptor, Mapping) or descriptor.get("type") != "inline"
+                or descriptor.get("files") != {"kernel.py": expected["candidate.py"]}):
+            raise ValueError("retained Job solution contradicts its native candidate")
     arch = environment.get("gpu_arch")
     snapshot = attempt.result.environment_snapshot
     if snapshot.observed.get("arch") not in {None, arch}:
