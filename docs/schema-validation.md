@@ -1,8 +1,8 @@
 # Schema 实施与运行验证记录
 
-记录截至 2026-11-23。两条真实原根现均接续 `c2e635e`：vector 的 v5/Episode13 和 GEMM 的 v2/Episode6 已分别完成独立资格与正式 acceptance，随后继续原生 D/E 探索。连续 72 小时有效稳定仍未完成；当前发行未重跑 fresh C，无 SOTA 的 design 证据来自旧发行。
+记录截至 2026-11-23。两条真实原链曾在 `c2e635e` 完成独立资格与正式 acceptance：vector 的 v5/Episode13 和 GEMM 的 v2/Episode6。随后 GEMM Episode8 因缺少原幂等 key 在保护门退出；vector 也于 16:40 UTC 因真实 `EDQUOT` 异常退出，finally 中的退出回执写入失败，`owner.json` 的 running 是旧值。已知 Eval84 为 cancelled、cleanup=false，没有新的成功测量；旧失败、unknown 与费用均保留。
 
-本次 native Resources 修复已通过最终源码独审与 CPU 验证：保留 D 的原生客户端、Skills 及完整 boot 贡献，Planner 仍只读 Schema 材料；合法 Skill 快照按原生成顺序恢复，篡改及旧锁不匹配继续拒绝。此补丁尚未部署到 live，独立安装和持久接续验证须另行记录，不能用 CPU 原型代替新进程恢复或长期运行证据。
+native Resources 修复已通过独立四包安装验证，尚未部署到 live。后继 auxiliary 提交保护与本次 fresh preparation 事实修复仅有源码 CPU 证据：新上下文可核验并优先采用本 run 完整成功 V0 的原始 owned Job，旧 snapshot fallback、冻结 context 与显式 Task 审阅权限保持。合并发行的独立安装及两条完整新场景仍待验证；fresh C 尚未实测，连续 72 小时有效稳定未完成，CPU 或安装通过不能代替模型/GPU 证据。
 
 配对起点修复只影响未来新 E；旧已冻结 GEMM a11/v2 的 seed、intent 和费用保持。新 Schema 仍须重新资格，合法 fail/unknown draft 可作实现起点，不能继承资格。
 
@@ -80,4 +80,4 @@ GEMM 原 Episode5 的 Coder 超时后自然异常退出：远端 Eval 已 cancel
 
 细节以 N 下五份外置报告为准：`implement-qualification-feedback-delivery.md`、`implement-planner-contract-correction.md`、`integrate-schema-execution-authority.md`、`fix-and-simplify-schema-closure.md`、`fix-legacy-schema-device-label.md`。后两份更新了早期接口和阻塞结论；最终独审见 `final-audit-schema-authority.md`，实际提交/发行及安装版后继准备分别见 `commit-release-schema-closure.md`、`prepare-schema-closure-successors.md`。没有把各阶段增量相加为统一代码或费用总数。
 
-后续 native Resources 部署仍须经独立安装、持久 helper/新 context 恢复及转换中断窗口验证，再在原 owner 完整停止和结清后按 fresh 门接续。不能写 state 提前 `close_window`，不能宽松旧资源锁或热补已封存 prefix；正常窗口仍由原生控制器推进。当前两次正式晋升不抹去旧 fail、unknown 和费用，也不代表 72 小时目标达成。
+后续先完成合并发行的干净安装，再按 fresh 准入门为两条完整 Task 启动新场景；旧根不恢复，旧资格不移植到新 digest。不能写 state 提前 `close_window`，不能宽松旧资源锁或热补已封存 prefix；正常窗口仍由原生控制器推进。历史两次正式晋升不抹去旧 fail、unknown 和费用，也不代表 72 小时目标达成。

@@ -215,19 +215,64 @@ def _job_facts(evidence, *, records, campaign, prepared, route):
         raise ValueError("retained runtime and native environment architecture conflict")
     version, version_source = _version({"triton": environment.get("triton_version"),
         "torch": environment.get("torch_version")}, framework, "observed")
+    snapshot_version = _snapshot_facts(snapshot, framework)["toolchain"]["value"]
+    if version is not None and snapshot_version not in {None, version}:
+        raise ValueError("retained runtime and native environment toolchain conflict")
     return {"architecture": {"value": arch, "source": "observed" if arch else "unknown"},
             "toolchain": {"framework": framework, "value": version,
                           "source": version_source}}
+
+
+def _preparation_job(records, record, campaign, prepared, route):
+    """Select an original full successful seed receipt, without acquiring facts.
+
+    Older/native adapters lacking an owned Job keep their snapshot fallback.
+    A selected receipt still passes the same verifier as explicit host evidence.
+    """
+    from .progress import measurement_evidence
+    owner = getattr(campaign, "candidate_workspace", None)
+    if (route is None or getattr(route, "ssh", False) or owner is None
+            or not prepared.get("source_identity")
+            or not any(item.role == "live_eval_association" for item in record.artifacts)):
+        return None
+    latest = {attempt.task_id: attempt for attempt in record.attempts}
+    for attempt in reversed(tuple(latest.values())):
+        result = attempt.result
+        if (result is None or attempt.disposition != "terminal" or result.transport_status != "succeeded"
+                or not any(ref.operation == "run" and ref.idempotency_key for ref in result.job_references)):
+            continue
+        raw = result.stdout.encode()
+        try:
+            body = json.loads(raw)
+        except ValueError:
+            continue
+        if (not isinstance(body, dict) or body.get("status") != "succeeded"
+                or not isinstance(body.get("result"), dict)
+                or not isinstance(body["result"].get("shape_selection"), dict)
+                or body["result"]["shape_selection"].get("partial") is not False):
+            continue
+        owners = [ref for ref in result.job_references if ref.identifier == body.get("job_id")]
+        if len(owners) != 1 or owners[0].operation != "run":
+            raise ValueError("native preparation receipt differs from its own attempt's Job")
+        measured = measurement_evidence(records, record, owner=owner,
+            task=campaign.problem.evaluation, hardware=prepared["hardware"])
+        if (measured is None or not measured["performance"] or any(
+                item.identity.method != "atrex-bench/eval" for item in measured["measurements"])):
+            return None
+        if measured["source_identity"] != prepared["source_identity"]:
+            raise ValueError("native preparation Job belongs to another prepared source")
+        return RetainedJobEvidence(raw, sha256(raw), record.ref, digest(record.as_dict()))
+    return None
 
 
 def execution_context(*, campaign, prepared, executor, directory, task_review=None,
                       retained_job=None, preparation_records=()):
     """Build one new operation's context from native owners, never during replay.
 
-    Ordinary native preparation already retains EnvironmentSnapshots on its
-    Experiment receipts. Reuse those first. If no receipt exists, a public
-    EnvironmentExecutor discovery may run once on the selected bound native
-    workflow; its original private bytes are retained before model admission.
+    Prefer an owned full successful preparation Job over its EnvironmentSnapshot;
+    validate the original receipt rather than relabelling cached observations.
+    If neither exists, public EnvironmentExecutor discovery may run once on the
+    selected bound native workflow, retaining private bytes before admission.
     Legacy/custom embeddings without that native owner retain unknown facts.
     """
     if campaign.problem_provider.snapshot(campaign.problem).identity != prepared["identity"]:
@@ -247,6 +292,10 @@ def execution_context(*, campaign, prepared, executor, directory, task_review=No
             for ref in reversed(preparation_records):
                 record = records.get(ref)
                 _record_task(records, record, campaign, prepared)
+                retained_job = _preparation_job(records, record, campaign, prepared, route)
+                if retained_job is not None:
+                    evidence = (retained_job.raw, retained_job.raw_sha256)
+                    break
                 for attempt in reversed(record.attempts):
                     snapshot = attempt.result.environment_snapshot if attempt.result else None
                     if snapshot is None:

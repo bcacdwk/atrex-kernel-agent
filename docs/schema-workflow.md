@@ -98,6 +98,11 @@ prepared Task, complete public Task, target hardware and native policy hashes.
 The selected framework comes from that frozen native policy. Architecture and toolchain
 facts come from an applicable native preparation snapshot, an owner-verified
 retained Job, or the selected native gateway's GET-only environment discovery.
+On fresh preparation, a complete successful Eval's original owned Job receipt
+takes precedence over its snapshot after the same Task, prepared-source, request,
+route and namespace checks. Missing or unqualified receipts retain the existing
+snapshot source; this selection neither grants Task correction authority nor
+refreshes a frozen context.
 SSH reuses preparation observations; Schema does not launch another remote probe.
 Each fact retains its `observed`, `configured`, `declared`, `cache` or `unknown`
 source and evidence hash. A GPU name, `campaign.arch`, runtime prompt or reference
