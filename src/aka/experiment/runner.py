@@ -76,6 +76,15 @@ class LegacyExperiment:
         from .unsubmitted import settle
         return settle(self._records(), ref, attempt_id, receipt=receipt, evidence=evidence)
 
+    def reconcile_cancelled_eval(self, ref, *, timeout=30):
+        """Archive an original cancelled inline Eval using only its owned Job GET.
+
+        This does not resume a measurement or extend its execution budget. It
+        retains every physical receipt and yields no successful evaluation.
+        """
+        from .cancelled import reconcile
+        return reconcile(self._records(), self.executor, ref, timeout=timeout)
+
     def read_artifact(self, artifact):
         return self._records().read_artifact(artifact)
 

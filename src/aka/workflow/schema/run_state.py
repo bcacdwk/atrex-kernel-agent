@@ -300,6 +300,13 @@ class RunState:
         """Only query original owners; query/cancel never buys a dispatch permit."""
         for permit, call in list(self.pending().items()):
             if call["kind"] == "execution" and call["job_references"]:
+                # A cancelled live Eval can cover earlier ambiguous physical
+                # calls. Its native owner must archive the complete association
+                # before a Job query can close any of these consumed permits.
+                association = call.get("live_eval_association")
+                if association and any(other.get("live_eval_association") == association
+                        and other.get("transport_status") == "cancelled" for other in self.pending().values()):
+                    continue
                 results = [executor.query_job(JobReference(**ref), timeout=30,
                     retry=InfrastructureRetryPolicy((), 0)) for ref in call["job_references"]]
                 if all(result.facts.disposition in {"terminal", "not_submitted"}

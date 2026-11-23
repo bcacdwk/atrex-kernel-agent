@@ -419,6 +419,7 @@ class SchemaWorkflow:
                     source.require_same_gpu()
                     self._sota_snapshot = source.ref()
                 # Recovery precedes scope installation and any new side effect.
+                self._reconcile_cancelled_episode(campaign)
                 state.reconcile(self._recovery_executor, recover_agent=self.recover_agent)
                 if state.data.get("retry_after"):
                     self._backoff(max(0, min(60, state.data["retry_after"] - time.time())))
@@ -667,7 +668,7 @@ class SchemaWorkflow:
         return gaps
 
     @staticmethod
-    def _preparation_admission_matches(attempt, reference, owners):
+    def _preparation_admission_matches(attempt, reference, owners, *, pending=False):
         """Check native same-Job recovery, without rewriting earlier unknowns."""
         result = attempt.result
         dispatches, queries = [], []
@@ -684,14 +685,14 @@ class SchemaWorkflow:
                 queries.append(physical)
             else:
                 return False
-        if not dispatches or result.attempts[-1].disposition != "terminal":
+        if not dispatches or not pending and result.attempts[-1].disposition != "terminal":
             return False
         if queries:
             # This is the native _resume_results contract: original known Job,
             # original dispatch history, then a confirming terminal GET.
             if "confirmed-job-query" not in result.facts.basis:
                 return False
-        elif any(item.disposition != "terminal" for item in dispatches):
+        elif not pending and any(item.disposition != "terminal" for item in dispatches):
             return False
         if len(dispatches) == len(owners) == 1:
             call = owners[0][1]
@@ -725,7 +726,7 @@ class SchemaWorkflow:
                 or not live.get("namespace_identity") or reference.profile):
             return False
         association = {**live, "job_reference": asdict(reference),
-            "physical_attempts": physical_ids, "terminal": not bool(queries)}
+            "physical_attempts": physical_ids, "terminal": not (pending or bool(queries))}
         observed_prefixes = set()
         for permit, call in owners:
             if (call.get("live_eval") != live or call.get("live_eval_association") != association
@@ -1201,6 +1202,8 @@ class SchemaWorkflow:
                 raise BudgetDenied(reason)
             raise RecoveryRequired("Native Episode returned before settlement: " + reason)
         facts = campaign.episode_facts(binding["episode"])
+        if self._reconcile_cancelled_episode(campaign, facts=facts):
+            facts = campaign.episode_facts(binding["episode"])
         self._settle(campaign, binding, facts)
         if len(self.state.data["window"]["episodes"]) == WINDOW_EPISODES:
             self._close_window()
@@ -1211,6 +1214,60 @@ class SchemaWorkflow:
             if record.lifecycle != "terminal" or any(attempt.disposition not in {"terminal", "not_submitted"}
                                                        for attempt in record.attempts):
                 raise RecoveryRequired("Original Experiment owner is unresolved: " + str(_record_ref(record)))
+
+    def _reconcile_cancelled_episode(self, campaign, *, facts=None):
+        """Close an archived Episode's original cancelled Eval, without admission."""
+        data = self.state.data
+        binding = data.get("binding")
+        calls = self.state.pending()
+        linked = {permit: call for permit, call in calls.items()
+                  if call["kind"] == "execution" and call.get("live_eval_association")}
+        if not binding or not linked:
+            return False
+        if any(call["kind"] == "agent" for call in calls.values()):
+            return False
+        if str(campaign.workspace.absolute()) != self.state.config["workspace"]:
+            raise RecoveryRequired("Cancelled Eval recovery belongs to another native workspace")
+        self._check_prepared(campaign)
+        facts = campaign.episode_facts(binding["episode"]) if facts is None else facts
+        native = facts["attempt"]
+        if (facts["active"] is not None or native is None or native.get("episode") != binding["episode"]
+                or native.get("accepted") is not False):
+            return False
+        from .progress import _full_task
+        from aka.experiment.cancelled import association
+        changed = False
+        with campaign.experiment_record_reader(executor=self._recovery_executor) as records:
+            for record in facts["records"]:
+                if len(record.attempts) != 1:
+                    continue
+                attempt, = record.attempts
+                owners = [(permit, call) for permit, call in linked.items()
+                          if call.get("live_eval", {}).get("attempt_id") == attempt.attempt_id]
+                if not owners or attempt.result is None or attempt.result.transport_status != "cancelled":
+                    continue
+                link = association(records, record)
+                step, = record.steps
+                owner = {"workspace": record.request.get("workspace"), "operation": step.operation,
+                    "hardware": step.hardware, "timeout": step.timeout, "command_digest": digest(list(step.argv))}
+                if (record.ref.run_id != str(campaign.workspace.resolve())
+                        or any(call["owner"] != owner or call["action"] != binding["operation_id"]
+                               or call.get("live_eval_association") != link for _, call in owners)
+                        or not _full_task(records, record, campaign.problem.evaluation, data["prepared"]["hardware"])
+                        or not self._preparation_admission_matches(attempt, attempt.result.job_references[0], owners,
+                                                                  pending=record.lifecycle != "terminal")):
+                    raise RecoveryRequired("Cancelled Eval differs from its original Task or admission owner")
+                settled = records.reconcile_cancelled_eval(record.ref)
+                recovered, = settled.attempts
+                if not self._preparation_admission_matches(recovered, recovered.result.job_references[0], owners):
+                    raise RecoveryRequired("Cancelled Eval terminal receipt differs from its physical admissions")
+                receipt, = [item for item in settled.artifacts if item.role == "cancelled-eval-receipt"]
+                for permit, call in owners:
+                    call.update(state="settled", disposition="terminal", cancelled_eval_receipt={
+                        "experiment": record.ref.as_dict(), "attempt_id": attempt.attempt_id, "sha256": receipt.sha256})
+                self.state.save()
+                changed = True
+        return changed
 
     def _settle(self, campaign, binding, facts):
         data = deepcopy(self.state.data)
@@ -1533,21 +1590,27 @@ class SchemaWorkflow:
             call.update(state="settled", disposition="not_submitted", transport_status=result.transport_status)
             self.state.save()
 
-    def resume_after_repair(self, reason, *, preparation_campaign=None):
+    def resume_after_repair(self, reason, *, preparation_campaign=None, campaign=None):
         """Record explicit repair without refunding usage or inventing admission.
 
         Supplying the original preparation Campaign explicitly requests a
         historical consumption correction from its retained dispatch receipts.
+        Supplying ``campaign`` also closes an archived cancelled Eval through
+        that original native owner before reconciling its consumed permits.
         """
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("A concrete repair diagnosis is required")
-        if preparation_campaign is not None:
-            self._bind_recovery(preparation_campaign)
+        if campaign is not None and preparation_campaign is not None and campaign is not preparation_campaign:
+            raise ValueError("Repair must retain one original native Campaign")
+        recovery_campaign = campaign if campaign is not None else preparation_campaign
+        if recovery_campaign is not None:
+            self._bind_recovery(recovery_campaign)
         with self.state.owned():
-            if preparation_campaign is not None:
-                self._check_prepared(preparation_campaign)
-                if str(preparation_campaign.workspace.absolute()) != self.state.config["workspace"]:
+            if recovery_campaign is not None:
+                self._check_prepared(recovery_campaign)
+                if str(recovery_campaign.workspace.absolute()) != self.state.config["workspace"]:
                     raise RecoveryRequired("Preparation recovery belongs to another native workspace")
+                self._reconcile_cancelled_episode(recovery_campaign)
             self.state.reconcile(self._recovery_executor, recover_agent=self.recover_agent)
             data = self.state.data
             if data["phase"] == "finished":

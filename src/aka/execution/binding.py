@@ -40,6 +40,9 @@ class SandboxExecutor:
             arguments["retry"] = retry
         return self._recovery("query_job", reference, **arguments)
 
+    def query_recorded_eval(self, association, *, timeout):
+        return self._recovery("query_recorded_eval", association, timeout=timeout)
+
     def cancel_job(self, reference, *, timeout):
         return self._recovery("cancel_job", reference, timeout=timeout)
 

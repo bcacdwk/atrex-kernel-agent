@@ -1,8 +1,12 @@
 # Schema 实施与运行验证记录
 
-记录截至 2026-11-23。本轮资格反馈、执行事实纠错及历史 Device 标签兼容已随 `20dcc9e` 提交并通过独立发行安装验证。GEMM 已同根接续该发行，真实 E 读取旧资格反馈、发表三叶事实纠错 v2，新 D 实际收到 v2；新 source 的完整 Task Eval、独立资格及连续 72 小时有效稳定仍未完成。vector 仍处于 `789c40f` 的原窗口结算阶段。
+记录截至 2026-11-23。资格反馈、执行事实纠错及历史 Device 标签兼容已随 `20dcc9e` 发行；配对 kernel 起点修复已随 `8bf09c1` 通过四包独立安装验证，vector 已同根接续该发行。GEMM 的真实 E 已读取旧资格反馈、发表三叶事实纠错 v2，新 D 实际收到 v2；完整 10 shape Eval45/46 均 PASS，但该 source 尚无 Schema seal、独立资格或 acceptance，连续 72 小时有效稳定仍未完成。
 
-新设计沿用冻结 working draft 的配对起点修复已通过源码独审（作者 113 项、独审 18 项 CPU 测试分别通过），本记录时点尚未发行。它只影响未来新 E；旧已冻结 GEMM a11/v2 的 seed、intent 和费用保持。新 Schema 仍须重新资格，合法 fail/unknown draft 可作实现起点，不能继承资格。
+配对起点修复只影响未来新 E；旧已冻结 GEMM a11/v2 的 seed、intent 和费用保持。新 Schema 仍须重新资格，合法 fail/unknown draft 可作实现起点，不能继承资格。
+
+GEMM 原 Episode5 的 Coder 超时后自然异常退出：远端 Eval 已 cancelled，原取消确认失败使 native logical record 和两条 Schema permit 保持 unknown。此次修复新增精确原绑定的公开取消结算：只对原 Job 做一次禁止重定向、无 artifact 下载的 GET；显式清理或身份冲突继续拒绝。合法确认保留全部原 physical attempt、请求、费用和原 envelope，只追加查询证据并结清 logical record 与对应 permits，不产生新测量、资格或晋升。正常返回、startup 和公开 `resume_after_repair(campaign=original)` 共用该路径。
+
+该修复已通过最终源码独审：12 个 loopback、6 个联网前拒绝、24 个事故原件私有副本、3 个真实时钟 CPU 公共恢复场景及 10 个兼容回归分别通过；这些计数不合并为真实 GPU 证据。本记录时点尚未执行原 GEMM 的公开恢复。发行安装与 fresh admission 仍须单独核验；异常恢复不能套用正常窗口停止条件，也不能手改 state、丢弃 unknown 或把旧 Eval PASS 转为候选。详细依据见 N 的 `final-audit-cancelled-eval-confirmation.md`。
 
 ## 目标与证据边界
 
@@ -74,4 +78,4 @@
 
 细节以 N 下五份外置报告为准：`implement-qualification-feedback-delivery.md`、`implement-planner-contract-correction.md`、`integrate-schema-execution-authority.md`、`fix-and-simplify-schema-closure.md`、`fix-legacy-schema-device-label.md`。后两份更新了早期接口和阻塞结论；最终独审见 `final-audit-schema-authority.md`，实际提交/发行及安装版后继准备分别见 `commit-release-schema-closure.md`、`prepare-schema-closure-successors.md`。没有把各阶段增量相加为统一代码或费用总数。
 
-本轮已具备上述发行与安装资格，真实后继验收仍未闭环。后续两原根升级须待各自当前 owner 正常结清到真实 E 入口，再由新 E/D 产生新 sealed source，完成全 Task 测试、独立资格和原生测量。不能写 state 提前 `close_window`；正常窗口仍由原生控制器推进。GEMM 已发表的三叶事实纠错不豁免原 Tile_pipeline fail，CPU 或只读门通过不代表晋升或 72 小时目标达成。
+本轮真实后继验收仍未闭环。健康运行的升级须经公开停止与接续；GEMM 本次异常恢复须先核原 owner/进程树退出、锁、完整原 Task/policy/绑定及 fresh 原 Job 终态，再由公开恢复路径结清原归档 Episode。不能写 state 提前 `close_window`；正常窗口仍由原生控制器推进。GEMM 已发表的三叶事实纠错不豁免原 Tile_pipeline fail，CPU 或只读门通过不代表晋升或 72 小时目标达成。

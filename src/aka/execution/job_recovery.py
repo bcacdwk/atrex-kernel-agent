@@ -60,6 +60,44 @@ class GatewayRecoveryMixin:
         policy = recovery_policy(getattr(self, "configuration", {})) if retry is None else retry
         return self._job_transport().query(reference, timeout=timeout, retry=policy)
 
+    def query_recorded_eval(self, association, *, timeout):
+        """Read one retained live Eval through its original route and namespace."""
+        from dataclasses import replace
+        import math
+        from urllib.parse import quote
+        from .live_eval import digest, sdk_http, WIRE_PATH
+        from .gateway.jobs import causes_from_error, client_wait_budget, result_from_job, unknown_result
+        from aka.contracts.execution_recovery import JobReference
+        if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("query timeout must be positive")
+        transport = self._job_transport()
+        reference = JobReference(**association["job_reference"])
+        if (reference.backend != "gateway" or reference.operation != "run" or reference.profile
+                or reference.endpoint != transport.endpoint or transport.profile
+                or not reference.idempotency_key or not reference.request_identity
+                or association.get("idempotency_key") != reference.idempotency_key
+                or association.get("request_identity") != reference.request_identity
+                or association.get("route_identity") != digest([reference.endpoint, WIRE_PATH, "", ""])
+                or not transport.environment.get("AGATE_AK") or not transport.environment.get("AGATE_SK")
+                or transport.environment.get("AGATE_TOKEN")
+                or association.get("namespace_identity") != digest(transport.environment["AGATE_AK"])):
+            raise UnsupportedExecution("recorded Eval recovery changed its original route or namespace")
+        # Retain the live Eval's SDK signing and no-redirect connection. This
+        # confirmation is one Job GET, with no retries or artifact collection.
+        request = sdk_http(transport.environment, reference.endpoint, transport_retries=0)
+        try:
+            job = request(reference.endpoint, "GET", "/v1/jobs/" + quote(reference.identifier, safe="")
+                          + "?include=spec", None, timeout)
+            result = result_from_job(job, reference)
+        except (OSError, ValueError, RuntimeError) as error:
+            result = unknown_result(reference, type(error).__name__)
+            causes = causes_from_error(error)
+            result = replace(result, causes=causes, attempts=tuple(
+                replace(item, causes=causes) for item in result.attempts))
+        budgets, diagnostics = client_wait_budget("query-wait", timeout, timeout)
+        return replace(result, budgets=(*result.budgets, *budgets),
+                       diagnostics=(*result.diagnostics, *diagnostics))
+
     def cancel_job(self, reference, *, timeout):
         return self._job_transport().cancel(reference, timeout=timeout)
 

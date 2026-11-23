@@ -2579,10 +2579,10 @@ class Campaign:
         self.start_runtime()
         return self._supervisor_runtime.read_experiment_source(artifact)
 
-    def experiment_record_reader(self):
-        """Borrow the original read capability, without execution or recovery."""
+    def experiment_record_reader(self, *, executor=None):
+        """Borrow the original Experiment; an explicit bound executor may query it."""
         self.start_runtime()
-        return self._supervisor_runtime._record_reader()
+        return self._supervisor_runtime._record_reader(executor=executor)
 
     def create_engine(self, *, continuous=False, episode_context="", episode_seed=None,
                       candidate_qualification=None):

@@ -355,6 +355,25 @@ queries or cancels that job. Explicit no-replay policy, corrupted receipts,
 missing identity, another unknown owner or a process restart cannot obtain
 this live-call permission. Generic scoped replay remains disabled.
 
+After a Coder timeout archives its rejected Episode, Schema can finish an
+already cancelled inline Eval through `LegacyExperiment.reconcile_cancelled_eval`.
+The original Experiment lock, immutable input/key, source, physical receipts,
+live association and selected namespace must agree. Only the original Job is
+queried once with `include=spec`, using its original SDK connection with redirects
+and retries disabled; no result artifacts are downloaded. Its cancelled status,
+completed cleanup and non-quarantined execution must be explicit, with no
+conflicting remote-termination or nested cleanup evidence. Optional Job source
+and request-summary echoes may be absent or null; returned comparable fields
+must agree with the retained input. This read is allowed after the measurement budget expires.
+It cannot submit or remeasure. The original record and physical unknowns remain
+archived, a confirming query has no physical attempt ID, and the logical record
+becomes terminal/inconclusive without qualification or promotion. All consumed
+dispatches and Coder time remain charged. Missing or contradictory evidence
+continues to block. The same check runs before normal continuation, and an
+embedding owner may request it explicitly with
+`driver.resume_after_repair(reason, campaign=original_campaign)`; no state edits
+or new baseline are required.
+
 Use a separate workspace for a finite diagnostic such as four Episodes; a
 finished diagnostic is intentionally terminal. Start the continuous campaign
 only after its configuration and observed behavior are accepted, retaining a

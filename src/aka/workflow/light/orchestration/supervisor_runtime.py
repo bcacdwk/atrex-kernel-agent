@@ -384,10 +384,10 @@ class SupervisorRuntime:
             return self.workspace_provider.read_source(path.parent / "agent/workspace")
 
     @contextmanager
-    def _record_reader(self):
+    def _record_reader(self, *, executor=None):
         services = self._record_services
         with services.experiments.open(workspace=self.config.workspace or self.root,
-                purpose="development", executor=self.executor, evaluator=services.evaluator,
+                purpose="development", executor=self.executor if executor is None else executor, evaluator=services.evaluator,
                 evaluation_input=self.evaluation_input, command_evaluator=services.command_evaluator) as records:
             yield records
 

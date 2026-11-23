@@ -217,7 +217,7 @@ class LiveEval:
         return projected
 
 
-def sdk_http(environment, endpoint, *, deadline=None):
+def sdk_http(environment, endpoint, *, deadline=None, transport_retries=2):
     """Use SDK signing/serialization, with no profile/config or legacy POST fallback."""
     from atrex_gateway_client import Client
     from atrex_gateway_client.auth import AkSkAuth
@@ -248,7 +248,8 @@ def sdk_http(environment, endpoint, *, deadline=None):
                 self.original_route_error = error
                 raise
 
-    client = OriginalRouteClient(endpoint, auth=AkSkAuth(environment["AGATE_AK"], environment["AGATE_SK"]))
+    client = OriginalRouteClient(endpoint, auth=AkSkAuth(environment["AGATE_AK"], environment["AGATE_SK"]),
+                                 transport_retries=transport_retries)
     if not hasattr(client, "_environment_opener") or not hasattr(client, "_connection"):
         raise UnsupportedExecution("SDK lacks the required frozen-connection adapter")
     client.original_route_error = GatewayError(409, {"reason": "original_submission_route_required"})
