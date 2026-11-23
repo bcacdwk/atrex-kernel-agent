@@ -1,6 +1,6 @@
 # Schema 实施与运行验证记录
 
-记录截至 2026-11-23。五轮实现、清理和后续已发行修复均已提交；vector 与 GEMM 两个原根已各一次同根接续到 `789c40f`，保留快照确认实际 owner 在运行。本轮资格反馈、执行事实纠错及历史 Device 标签兼容已通过最终源码独审，仍为**未提交候选，待 commit、发行及实测**，尚未用于 live。有效重复进展及连续 72 小时观察仍未完成。
+记录截至 2026-11-23。本轮资格反馈、执行事实纠错及历史 Device 标签兼容已随 `20dcc9e` 提交，四包实际发行与独立安装验证通过；两条实际原根的安装版只读接续门也已通过。vector 与 GEMM 此前各一次同根接续到 `789c40f`，新发行的真实 E/D 验收尚未完成。有效重复进展及连续 72 小时观察仍未完成。
 
 ## 目标与证据边界
 
@@ -30,7 +30,7 @@
 | 有 SOTA 的 vector | 原根发布 v2；首个 D 完成资格与正式 acceptance，候选 7.2518 μs、基线 7.5445 μs，原生聚合改善约 4.04%。同 v2 四 Episode 窗口结束后自动进入 E，发布精确 parent 的 v3，再进入 D；后续保留快照已至 v4。 | 首个 optimize → D 窗口 → E → 新版本 → D 已真实走通。后续资格 pass 而 accepted=false 的候选保留为 draft，champion 不变；探索 ABBA 和跨记录 unknown 不能冒充正式提升。尚未完成 72 小时观察。 |
 | 无 SOTA 的 GEMM | 经多次 writer 失败后发布 design v1，原控制器进入多个 D。首个新源全 Task Eval 为 10 shapes、完整/PASS、193.3558 μs。Episode2 实际提交 candidate_ready，但独立资格为 fail，绑定其精确 sealed source，未晋升；789 后继继续 D。 | 尚未证明无 SOTA 的完整 design → D → E → D 有效重复链。原 v1 的 Hardware/Tile_pipeline fail 与费用保持；Eval PASS、正常退出和 candidate_ready 均不等于 Schema 符合性。 |
 
-2026-11-23 05:59:45 UTC 的保留快照确认两条 789 owner 身份正确、零自动重启：vector 已至 v4 的第三窗口，GEMM 仍在 v1 的首个 D 窗口；这不是实时状态声明。两条 789 接续均先由原 owner 停止并真实结清，再经公开 `driver_factory` / `resume_after_repair` 各启动一次；root/config/Task/prepared、旧调用和预算保持。vector 继承原 Episode 余额，GEMM 只为下一 Episode 分配原合同额度，未重置已用预算。运行中的 789 不包含下述未提交修复，不能把只读原件验证写成已经向 live Coder 送达或完成新版本纠错。
+2026-11-23 05:59:45 UTC 的保留快照确认两条 789 owner 身份正确、零自动重启：vector 已至 v4 的第三窗口，GEMM 仍在 v1 的首个 D 窗口；这不是实时状态声明。两条 789 接续均先由原 owner 停止并真实结清，再经公开 `driver_factory` / `resume_after_repair` 各启动一次；root/config/Task/prepared、旧调用和预算保持。vector 继承原 Episode 余额，GEMM 只为下一 Episode 分配原合同额度，未重置已用预算。该 789 安装不包含下述 `20dcc9e` 修复，不能把新发行的只读接续验证写成已经向 live Coder 送达或完成新版本纠错。
 
 ## 真实问题与已发行处理
 
@@ -47,9 +47,9 @@
 
 早期诊断曾误输出含签名依赖 URL 的嵌套字段，worker 边界问题也已向用户披露；本轮集成探查再次发生同类 stdout 偏差并已报告。原值不入库，失败日志在外置根保留。后续采用类型检查和最小字段输出；本文不声称所有历史 stdout 或网络检查全程零偏差。
 
-## 本轮闭环候选：修复与证据
+## 本轮已提交闭环修复与证据
 
-| 问题 | 最终候选行为 | 证据与状态 |
+| 问题 | 已提交行为 | 证据与状态 |
 | --- | --- | --- |
 | 原 GEMM 的具体资格 fail 没有可靠进入下一 D/E。 | 原生 archive 中的原判定按 Task/design/实际 sealed source/context 精确投影；D 只取当前 seed，E 明标历史 reviewed source。给出有界原因、原义务、可核 hash/行号和内联引用；旧 row 不改。 | 红/绿 CPU 原生 seal → review → archive → settlement → 新 prompt/E 链通过。真实旧 GEMM 只读视图保留 Hardware/Tile_pipeline 两项 fail 及引用；加入 legacy 标记后的 D/E 长度为 5500/7814 字符，未向 live 注入。 |
 | C/E 不知道执行框架和可信架构/工具链，旧 Contract 的事实错误又被整体冻结。 | 新 context 标记 selected framework 和事实来源；可信 TaskConstraintReview/RetainedJobEvidence 经现有 embedding 接入。只有 Architecture、Stack.Language、Stack.Toolchain 可按精确 proof 形成新版本。纯事实纠错不重置 hypothesis、draft、progress、窗口或预算。 | 实际 Planner/native owner/checker/publication 与公开 factory 同根接续 CPU 链通过；模型自授权、错 Task/source/route/policy、越叶更改均拒。旧 v1/fail/cost 保持。详见 [工作流边界](schema-workflow.md#frozen-execution-facts-and-contract-corrections)。 |
@@ -57,8 +57,19 @@
 | vector 历史 Device 为 `AKA L20D`，实际 target 为 `L20D`，阻断合法后继纠错。 | 仅可信 host 明确声明的旧锚点及其逐字同标签谱系可保留该显示值；核完整 Task、target、原 operation/parent/字节，canonical Device 仍为 L20D。new C 不获 alias 许可，Device 不可改。 | 实际 vector v4 沿已审阅 v3 锚点、以及 GEMM v1，各用自己的 retained Job/native owner 只读通过 successor/proof/checker/Contract 门。只在内存形成候选，0 publication；旧 Task/design/fail 不变。 |
 | 同事实的新证据 digest 可能使 keep 循环，或把旧判定移到新 context。 | 同事实 keep 保 parent 原 context 给 D/reviewer；事实冲突需有据新版本。旧 source/context 摘要不适用于新 source/context，旧请求恢复只读原字节。 | same-facts keep、新事实 correction、旧摘要错绑定、导入谱系拒绝及 legacy keep → D 的定向 CPU 链通过。 |
 
-最终独审在稳定的最终源码上重跑五模块，**93 passed**；另新写独立端到端链与 Schema off 检查，**2 passed**。后者直接核新 E 纠错 → D seal/review fail → 下一 E keep/下一 D 的具体反馈和 context，并拒绝同事实不同 digest 的错误 Coder 绑定。两条实际原根只读门再次通过，0 publication、0原件写入。不同范围和前作者重叠批次不累加；此前红/绿及失败原件保留，没有全仓、36 Episode 或新安装版套件全量重跑。CPU fake model/measurement 和本地服务的两批 guard 均记录外部 connect 为 0，不是整个历史会话的网络或保密保证。源码 AST、diff 格式和冻结材料清单检查通过，新模块在动态发行输入内；尚未 build/install 新四包，也未验证新发行的 live capture/restore。
+最终源码独审通过后，`20dcc9eefda95fcb1bbdec1e2bdcdc5acf434c7a` 的四包均实际走 sdist → wheel → 新持久 prefix 非 editable 安装。独立遍历核对 **802 文件、544 Python 模块、143 Schema 材料**，源、sdist、wheel、安装内容及 commit Git blob 一致；未复制旧环境或回退源码。
 
-细节以 N 下五份外置报告为准：`implement-qualification-feedback-delivery.md`、`implement-planner-contract-correction.md`、`integrate-schema-execution-authority.md`、`fix-and-simplify-schema-closure.md`、`fix-legacy-schema-device-label.md`。后两份更新了早期接口和阻塞结论；最终独审及重跑证据见 `final-audit-schema-authority.md`。没有把各阶段增量相加为统一代码或费用总数。
+最终安装验证使用新 prefix、独立 cwd 和 `-I -B`，各范围分别为：
 
-最终源码独审在指定源码、CPU 和只读原件范围内未发现阻挡合并的剩余实质问题；本轮仍待 commit、发行验收及实测。真实后继须在原 owner 正常结清及授权的新 operation 边界接入可信审阅/原件，由新 E 纠正事实并处理原 pipeline 设计问题，再由 D 产生新 sealed source，完成全 Task 测试、独立资格和原生测量。三叶事实纠错不豁免原 Tile_pipeline fail，CPU 或只读门通过不代表线上修复、晋升或 72 小时目标达成。
+- 五模块专项 **93 passed**，覆盖执行事实、纠错授权、context 继承/replay、资格反馈、历史 Device 和公开同根接续。
+- 独立端到端链及默认/公开 host/CLI Schema off **4 passed**；核新 E 纠错 → D seal/review fail → 下一 E keep/下一 D 的具体反馈和 context，并拒绝同事实不同 digest 的错误 Coder 绑定。
+- off / on-None / on-8192 **3 种公开装配**通过，含 strict capture/restore 和原生 Agent/Executor 共享；terminal process 为 synthetic。
+- 实际安装版 `proc_view → bwrap` helper 的正常退出、非零退出、SIGINT、SIGTERM、等待后取消 **5 场景**通过；实际 `run_bounded` 的 **1.5 秒超时场景**另行通过，均核输出和清理。
+
+上述各阶段完整 **3072 项** prefix 内容/权限/链接 seal 保持一致，AKA cache/pyc 为 0；没有删除缓存、热改安装或更改基准 seal。三组安装 guard 的违规计数均为 0，这不代表整个历史会话的网络或保密保证。不同范围及此前源码批次不累加，未重跑全仓、旧 36 Episode 或全部历史套件；此前红/绿及失败原件保留。
+
+后继准备另以最终安装版对两条实际原根完成只读 strict capture/restore、公开装配及 successor/proof/checker/Contract 门，0 publication、0 原件写入。旧 GEMM 的具体 fail 可按实际 selector 投影给新 E；这仍是只读准备证据，尚不能证明真实新 E 已收到反馈、发表纠错版本或新 D 完成资格与测量。
+
+细节以 N 下五份外置报告为准：`implement-qualification-feedback-delivery.md`、`implement-planner-contract-correction.md`、`integrate-schema-execution-authority.md`、`fix-and-simplify-schema-closure.md`、`fix-legacy-schema-device-label.md`。后两份更新了早期接口和阻塞结论；最终独审见 `final-audit-schema-authority.md`，实际提交/发行及安装版后继准备分别见 `commit-release-schema-closure.md`、`prepare-schema-closure-successors.md`。没有把各阶段增量相加为统一代码或费用总数。
+
+本轮已具备上述发行与安装资格，仍待真实后继验收。此次两原根升级须待原 owner 正常结清到真实 E 入口，接入可信审阅/原件，由新 E 发表纠正事实并处理 pipeline 设计问题的新 Schema，再由 D 产生新 sealed source，完成全 Task 测试、独立资格和原生测量。不能在旧不一致 Contract 中强推 D，或写 state 提前 `close_window`；这一要求针对本次升级，正常后续窗口仍由原生控制器自动推进。三叶事实纠错不豁免原 Tile_pipeline fail，CPU 或只读门通过不代表线上修复、晋升或 72 小时目标达成。
