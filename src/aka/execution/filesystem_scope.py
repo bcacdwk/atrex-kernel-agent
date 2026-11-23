@@ -40,5 +40,8 @@ def bound_command(context, command):
         # legal. A restricted call never borrows the host's ambient credentials,
         # dependency/private-reference paths or selected runtime environment.
         environment = dict(command.environment)
-    return replace(command, environment=environment,
-        hardware=command.hardware or context.hardware, filesystem_access=scope)
+    hardware = command.hardware or context.hardware
+    if (environment == command.environment and hardware == command.hardware
+            and scope == command.filesystem_access):
+        return command
+    return replace(command, environment=environment, hardware=hardware, filesystem_access=scope)

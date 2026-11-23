@@ -377,6 +377,13 @@ class LegacyExperiment:
             cached[index] = records.result_for(ref, attempt.attempt_id)
         return cached
 
+    def _bound_command(self, command):
+        # Plans retain Evaluation's requested inputs (including old Job recovery
+        # identities). A new submission intent records Execution's effective
+        # command after the borrowed host context has been resolved.
+        bind = getattr(self.executor, "bind_command", None)
+        return bind(command) if callable(bind) else command
+
     @staticmethod
     def _observed_command(command, records, ref, attempt_id):
         if records is None:
@@ -469,7 +476,7 @@ class LegacyExperiment:
                 capabilities = getattr(self.executor, "capabilities", None)
                 if capabilities is not None:
                     capabilities.require(commands[index])
-                command = commands[index]
+                command = self._bound_command(commands[index])
                 command = self._observed_command(command, records, ref, attempt_id)
                 result = self.executor.run(command)
             except BaseException as error:
@@ -603,7 +610,7 @@ class LegacyExperiment:
             def attempt():
                 attempt_id = archive_intent or (records.intent(ref, index) if records is not None else None)
                 try:
-                    observed_command = self._observed_command(command, records, ref, attempt_id)
+                    observed_command = self._observed_command(self._bound_command(command), records, ref, attempt_id)
                     result = self.executor.run(observed_command)
                 except BaseException as error:
                     if records is not None:

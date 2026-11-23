@@ -287,6 +287,17 @@ class ExecutionBinder(Protocol):
     def bind(self, context: ExecutionContext) -> Executor: ...
 
 
+@runtime_checkable
+class ExecutionCommandBinder(Protocol):
+    def bind_command(self, command: CommandSpec) -> CommandSpec:
+        """Resolve the borrowed host context before freezing a submission intent.
+
+        Binding is idempotent for this executor's immutable context. Running the
+        returned command must preserve its effective environment and scope.
+        """
+        ...
+
+
 @dataclass(frozen=True)
 class ExecutionFile:
     """Retrieved workspace-relative content; the caller owns publication."""

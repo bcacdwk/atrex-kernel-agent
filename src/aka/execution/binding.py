@@ -8,9 +8,18 @@ class SandboxExecutor:
     def __init__(self, executor: Executor, context: ExecutionContext):
         from .filesystem_scope import require_scope_backend
         require_scope_backend(context, executor.capabilities)
-        self.context = context
+        self._context = context
         self.executor = executor.bind(context) if isinstance(executor, ExecutionBinder) else executor
         require_scope_backend(context, self.executor.capabilities)
+
+    @property
+    def context(self):
+        """The immutable host context borrowed for this executor's lifetime."""
+        return self._context
+
+    def bind_command(self, command: CommandSpec) -> CommandSpec:
+        from .filesystem_scope import bound_command
+        return bound_command(self.context, command)
 
     @property
     def capabilities(self):
@@ -47,8 +56,7 @@ class SandboxExecutor:
         return self._recovery("cancel_job", reference, timeout=timeout)
 
     def replay_job(self, command, *, idempotency_key):
-        from .filesystem_scope import bound_command
-        bound = bound_command(self.context, command)
+        bound = self.bind_command(command)
         if bound.filesystem_access is not None:
             from aka.contracts.execution import UnsupportedExecution
             raise UnsupportedExecution("scoped execution does not provide job replay")
@@ -78,8 +86,7 @@ class SandboxExecutor:
         return resolve(command) if callable(resolve) else command.timeout
 
     def run(self, command: CommandSpec) -> JobResult:
-        from .filesystem_scope import bound_command
-        bound = bound_command(self.context, command)
+        bound = self.bind_command(command)
         self.executor.capabilities.require(bound)
         result = self.executor.run(bound)
         if not isinstance(result, JobResult):
