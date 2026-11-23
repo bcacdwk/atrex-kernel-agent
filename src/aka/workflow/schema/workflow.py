@@ -12,7 +12,7 @@ from typing import Mapping
 from aka.core.active_time import ActiveBudget, budget_scope
 from aka.core.filesystem import read_regular_bytes
 from .materials import DesignRef, read_design, snapshot_ref
-from .run_state import BudgetDenied, RecoveryRequired, RunLimits, RunState, digest
+from .run_state import BudgetDenied, RecoveryRequired, RunLimits, RunState, digest, execution_attempt_identity
 from .progress import needs_new_hypothesis
 
 
@@ -545,20 +545,80 @@ class SchemaWorkflow:
         for record in records:
             for attempt in record.attempts:
                 result = attempt.result
-                jobs = [asdict(reference) for reference in result.job_references] if result is not None else []
-                owners = [call for call in data["calls"].values() if call["kind"] == "execution"
-                    and jobs and jobs == call["job_references"]]
-                if owners:
-                    if (len(owners) != 1 or any(row["evidence"]["job_reference"] in jobs
-                                               for row in corrections.values())):
-                        raise RecoveryRequired("Original preparation dispatch has ambiguous admission ownership")
-                    continue
+                steps = [step for step in record.steps if step.task_id == attempt.task_id]
+                if len(steps) != 1 or record.ref.run_id != str(Path(self.state.config["workspace"]).resolve()):
+                    raise RecoveryRequired("Original preparation dispatch belongs to another native owner")
+                step, = steps
+                owner = {"workspace": record.request["workspace"], "operation": step.operation,
+                    "hardware": step.hardware, "timeout": step.timeout, "command_digest": digest(list(step.argv))}
+                if attempt.disposition == "not_submitted":
+                    if (result is None or result.facts.disposition != "not_submitted"
+                            or result.facts.local_stopped is not True or result.job_references
+                            or result.exit_code is not None or result.file_receipts):
+                        raise RecoveryRequired("Original preparation has no settled pre-submission evidence")
+                    owners = []
+                    for permit, call in data["calls"].items():
+                        if (call["kind"] != "execution" or call["owner"] != owner
+                                or call["state"] != "settled" or call.get("disposition") != "not_submitted"
+                                or call.get("transport_status") != result.transport_status or call["job_references"]):
+                            continue
+                        # Match the original observation, including ordinary Eval
+                        # with replay disabled. Older live Eval roots retained an
+                        # equivalent native-attempt/submission association.
+                        live = call.get("live_eval", {})
+                        if len(result.attempts) == 1:
+                            physical, = result.attempts
+                            observed = (call.get("execution_attempts") == [execution_attempt_identity(physical)]
+                                and call.get("recorded_eval") == {"attempt_id": attempt.attempt_id,
+                                    "idempotency_key": physical.idempotency_key})
+                            linked = ("execution_attempts" not in call and "recorded_eval" not in call
+                                and live.get("attempt_id") == attempt.attempt_id
+                                and call.get("original_permit") == permit
+                                and physical.resource is not None and physical.resource.backend == "gateway"
+                                and physical.idempotency_key and physical.request_identity
+                                and live.get("idempotency_key") == physical.idempotency_key
+                                and live.get("request_identity") == physical.request_identity)
+                            if ((observed or linked) and physical.attempt_id and physical.disposition == "not_submitted"
+                                    and physical.operation == step.operation and physical.exit_code is None
+                                    and physical.resource is not None and physical.resource.identifier is None):
+                                owners.append(permit)
+                        elif not result.attempts:
+                            # Local failures without physical receipts still need
+                            # the existing explicit original-owner settlement.
+                            proof = data.get("unsubmitted_execution_settlements", {}).get(permit, {}).get("evidence")
+                            receipts = [item for item in record.artifacts if item.role == "unsubmitted-owner-receipt"]
+                            if (len(receipts) == 1 and proof == {"experiment": _record_ref(record),
+                                    "attempt_id": attempt.attempt_id, "receipt_sha256": receipts[0].sha256}
+                                    and "original-owner-confirmed-not-submitted" in result.facts.basis
+                                    and any(item.code == "original-owner-unsubmitted"
+                                        and item.details.get("receipt_sha256") == receipts[0].sha256
+                                        for item in result.diagnostics)):
+                                owners.append(permit)
+                    if len(owners) != 1:
+                        raise RecoveryRequired("Original preparation rejection has no unique settled admission")
+                    continue  # The original admission already consumed its dispatch.
                 if (attempt.disposition != "terminal" or result is None
                         or result.facts.disposition != "terminal" or not result.facts.local_stopped
-                        or len(result.attempts) != 1 or len(result.job_references) != 1):
+                        or not result.attempts or len(result.job_references) != 1):
+                    raise RecoveryRequired("Original preparation dispatch count is unknown; inspect its original owner")
+                reference, = result.job_references
+                if reference.operation != step.operation:
+                    raise RecoveryRequired("Original preparation dispatch identity is unknown; inspect its original owner")
+                jobs = [asdict(reference)]
+                owners = [(permit, call) for permit, call in data["calls"].items() if call["kind"] == "execution"
+                    and jobs == call["job_references"]]
+                if owners:
+                    if (any(call["owner"] != owner or call["state"] != "settled"
+                            or call.get("disposition") != "terminal" for _, call in owners)
+                            or not self._preparation_admission_matches(attempt, reference, owners)
+                            or any(row["evidence"]["job_reference"] in jobs for row in corrections.values())):
+                        raise RecoveryRequired("Original preparation dispatch has ambiguous admission ownership")
+                    continue
+                # Historical corrections still require exactly one evidenced
+                # dispatch. Query receipts never establish missing consumption.
+                if len(result.attempts) != 1:
                     raise RecoveryRequired("Original preparation dispatch count is unknown; inspect its original owner")
                 physical, = result.attempts
-                reference, = result.job_references
                 if (physical.disposition != "terminal" or not physical.attempt_id
                         or physical.resource is None or physical.resource.backend != reference.backend
                         or physical.resource.identifier != reference.identifier or physical.operation != reference.operation):
@@ -575,6 +635,91 @@ class SchemaWorkflow:
                         raise RecoveryRequired("Original preparation dispatch has ambiguous Experiment ownership")
                     gaps[key] = proof
         return gaps
+
+    @staticmethod
+    def _preparation_admission_matches(attempt, reference, owners):
+        """Check native same-Job recovery, without rewriting earlier unknowns."""
+        result = attempt.result
+        dispatches, queries = [], []
+        for physical in result.attempts:
+            if (physical.resource is None or physical.resource.backend != reference.backend
+                    or physical.resource.identifier != reference.identifier
+                    or physical.disposition not in {"terminal", "unknown"}
+                    or physical.idempotency_key != reference.idempotency_key
+                    or (physical.request_identity or "") != reference.request_identity):
+                return False
+            if physical.operation == reference.operation and physical.attempt_id and not queries:
+                dispatches.append(physical)
+            elif physical.operation == "query" and physical.attempt_id is None:
+                queries.append(physical)
+            else:
+                return False
+        if not dispatches or result.attempts[-1].disposition != "terminal":
+            return False
+        if queries:
+            # This is the native _resume_results contract: original known Job,
+            # original dispatch history, then a confirming terminal GET.
+            if "confirmed-job-query" not in result.facts.basis:
+                return False
+        elif any(item.disposition != "terminal" for item in dispatches):
+            return False
+        if len(dispatches) == len(owners) == 1:
+            call = owners[0][1]
+            observed = call.get("execution_attempts")
+            recorded = call.get("recorded_eval")
+            if recorded is not None and observed is None:
+                return False
+            return ((observed is None or observed == [execution_attempt_identity(dispatches[0])])
+                and (recorded is None or recorded == {"attempt_id": attempt.attempt_id,
+                    "idempotency_key": dispatches[0].idempotency_key}
+                    # Historical launchers can lack physical key receipts.
+                    or not dispatches[0].idempotency_key and recorded.get("attempt_id") == attempt.attempt_id))
+        # Multiple paid submissions are legal only within the original live
+        # Eval's exact archived association. A shared JobRef alone is insufficient.
+        physical_ids = [item.attempt_id for item in dispatches]
+        originals = {call.get("original_permit") for _, call in owners}
+        if len(originals) != 1:
+            return False
+        first_permit, = originals
+        first = dict(owners).get(first_permit)
+        if first is None:
+            return False
+        live = first.get("live_eval", {})
+        if (len(dispatches) != len(owners) or len(set(physical_ids)) != len(physical_ids)
+                or reference.backend != "gateway" or not reference.endpoint
+                or not reference.idempotency_key or not reference.request_identity
+                or live.get("attempt_id") != attempt.attempt_id
+                or live.get("idempotency_key") != reference.idempotency_key
+                or live.get("request_identity") != reference.request_identity
+                or live.get("route_identity") != digest([reference.endpoint, "/v1/jobs/eval", "", ""])
+                or not live.get("namespace_identity") or reference.profile):
+            return False
+        association = {**live, "job_reference": asdict(reference),
+            "physical_attempts": physical_ids, "terminal": not bool(queries)}
+        observed_prefixes = set()
+        for permit, call in owners:
+            if (call.get("live_eval") != live or call.get("live_eval_association") != association
+                    or call.get("original_permit") != first_permit or call["action"] != first["action"]):
+                return False
+            if "execution_attempts" in call or "recorded_eval" in call:
+                observed = call.get("execution_attempts", [])
+                if (call.get("recorded_eval") != {"attempt_id": attempt.attempt_id,
+                        "idempotency_key": reference.idempotency_key}
+                        or not 0 < len(observed) <= len(dispatches)
+                        or permit == first_permit and len(observed) != 1
+                        or [item["attempt_id"] for item in observed] != physical_ids[:len(observed)]):
+                    return False
+                observed_prefixes.add(len(observed))
+                for item, physical in zip(observed, dispatches):
+                    expected = execution_attempt_identity(physical)
+                    if item != expected and item != {**expected, "disposition": "unknown",
+                            "resource": {"backend": reference.backend, "identifier": None}}:
+                        return False
+        if observed_prefixes and observed_prefixes != set(range(1, len(dispatches) + 1)):
+            return False
+        return all(any(item.category == "recovery" and item.code == "live-eval-association"
+            and item.details.get("receipt") == json.dumps(association, sort_keys=True, separators=(",", ":"))
+            for item in physical.diagnostics) for physical in dispatches)
 
     def _repair_preparation_dispatches(self, campaign, reason):
         self._check_prepared(campaign)

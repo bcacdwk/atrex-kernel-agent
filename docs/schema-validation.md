@@ -1,6 +1,6 @@
 # Schema 实施与运行验证记录
 
-当前阶段：五轮实现及清理已提交，并持续修复真实实验问题。两条 V0 已通过；vector 已完成新设计、实现、独立资格审查与正式晋升，并继续实现迭代。GEMM 已修复 writer 参数冲突，从原任务恢复并收到真实 Qwen 工具响应，尚待初版 Schema 发布。两条持续 D/E 链及多日稳定性仍未完整验证。
+当前阶段：五轮实现及清理已提交，并持续修复真实实验问题。vector 已完成首个四 Episode 窗口、再次 optimize 并发布v3，自动进入第二实现窗口；GEMM 已发布初版 Schema，自动进入首个 implement。GEMM完整重复链及两条链的多日稳定性仍未验证完成。
 
 ## 正式目标
 
@@ -109,3 +109,9 @@
 - `65d427c` 四包及独立安装验证通过：181项相关检查、19项实际CLI离线场景、7项旧冲突反例和799文件闭包一致。22:43 UTC GEMM使用独立安装从原root恢复至新操作a6，原V0、历史调用与消费保留；实际请求enabled/8192、max32000且无effort。22:44 UTC真实Qwen返回tool_use，首批5个Read均成功，无原参数冲突；这证明provider接受与工具可用，尚不证明设计发布或完整循环。
 - 源策略反馈修复仅改已有分类边界：明确候选源的标准SDK拒绝进入可修复反馈，未知细节使用固定提示；reference/env/混合归属不误判，不回显私有原文。相关111项CPU检查通过，原Eval22只读投影现给出`Forbidden name: getattr`，仍为未提交、无GPU数值，原记录和receipt摘要不变；运行安装尚未更新。
 - Dev相同完整冻结请求现在复用非阻塞文件锁，并在登记/新派发前检查原持久记录；未决替换返回有限Coder反馈，独立Eval仍可继续。旧版实际接线反例会派发两次，新版只派发一次且保留原记录与消费。相关109项CPU检查、目标挂载跨进程锁及真实Dev19只读检查通过。独审发现并修复了同原Job已明确停止后仍被历史unknown误封的问题；最终17项Dev回归通过。保护限于相同namespace/完整摘要，不声称识别改动输入后的所有语义重复；尚未部署到live运行。
+- `c476c3f` 四包及独立安装闭包通过，相关168项安装版回归、最终安装51项新增回归通过，无skip。后继准备发现既有vector恢复门误要求原已计费的`not_submitted`准备记录拥有JobRef；原失败、后续成功V0与各自permit均完整保留，后续修复如下，未切换live安装。
+- 23:19 UTC vector四Episode窗口完成（1次accepted、3次pivot），原控制器自动启动下一次optimize。实际新请求及文件绑定v2 Schema、champion/working draft650fd…、tested candidate8b9f…与最新负改善反馈；writer实际读取了这些输入。8000字符反馈只保留最近Episode，但仍有原milestones和comparison target，不能宣称四轮完整历史均入模。
+- 23:40 UTC GEMM原writer正常退出，初版v1正式发布：identity`9b8e2c07…`，两文件、0error/7warning，同安装`read_design`核验完整。原supervisor自动进入window1/Episode1 implement，新的Qwen/max Coder绑定v1与原V0 seed304a60ad…并完成首批工具调用，未重测V0。原writer及所有失败前驱消费保留；尚无首个D验收或后续E证据。
+- 23:45 UTC vector原E正常退出并发布v3（identity`bb2f1967…`），原生完整性验证通过；parent精确绑定v2、冻结Contract相同、execution view确实改变。原控制器自动进入window2/Episode5，新Coder绑定v3与champion650fd…；已有SOTA链的optimize→implement→optimize→implement已在原根真实走通，尚不代表多日稳定。
+- 准备恢复门现按原native/physical身份、scope和已结算permit核对有据未提交记录；新普通recorded Eval补最少身份投影，旧记录不回填。独审发现并修复了原Job查询的多回执误封及保存后字典顺序依赖，并兼容原有同活keyed多permit成功链。单POST+原Job查询仍计1派发，两POST同key恢复仍计2；原unknown和历史账均保留，缺证据/错关联继续拒绝。最终114项相关CPU、独立57项及16个定点反例通过；实际两原根只读刷新通过且记录/账目不变。尚待新发行和live切换。
+- 2026-11-23 00:00 UTC GEMM首个新实现f5ef07b0…的全量Eval `ev_1f22fcfe08e1` 已终态：10形状valid/complete/PASS，193.3558028微秒；随后自动开始profile。该测量尚非同分配正式acceptance，未完成资格审查或晋升，不据此宣称正式性能提升。

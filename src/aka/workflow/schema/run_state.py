@@ -75,6 +75,13 @@ def digest(value):
         separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 
+def execution_attempt_identity(attempt):
+    """Original observation identity, without private output or error details."""
+    return {**{name: getattr(attempt, name) for name in (
+        "attempt_id", "operation", "disposition", "idempotency_key", "request_identity")},
+        "resource": asdict(attempt.resource) if attempt.resource is not None else None}
+
+
 class RunState:
     def __init__(self, directory: Path, *, limits: RunLimits, workspace: Path, identity: dict):
         self.directory = Path(directory).absolute()
@@ -201,6 +208,14 @@ class RunState:
             permit = self._admit("execution", "dispatches", {"workspace": str(command.workspace),
                 "operation": command.operation, "hardware": command.hardware,
                 "command_digest": digest(list(command.command)), "timeout": command.timeout}, allowed=allowed)
+            from aka.execution.live_eval import RecordedEval
+            recorded = getattr(command.on_observation, "_live_eval_owner", None)
+            if isinstance(recorded, RecordedEval):
+                # Published by Experiment even when live replay is disabled.
+                # Retain its identity before launching, never reconstruct it on resume.
+                self.data["calls"][permit]["recorded_eval"] = {name: recorded.binding[name]
+                    for name in ("attempt_id", "idempotency_key")}
+                self.save()
             if continuation is not None:
                 self.data["calls"][permit]["live_eval"] = dict(continuation.identity)
                 self.data["calls"][permit]["original_permit"] = continuation.permits[0] if continuation.permits else permit
@@ -258,6 +273,7 @@ class RunState:
                 # Original owner persists full output. Root retains only the
                 # confirmed recovery references and disposition needed to gate.
                 call["job_references"] = [asdict(item) for item in result.job_references]
+                call["execution_attempts"] = [execution_attempt_identity(item) for item in result.attempts]
                 call["disposition"] = result.facts.disposition
                 call["transport_status"] = result.transport_status
                 call["state"] = "settled" if (result.facts.disposition in {"terminal", "not_submitted"}
