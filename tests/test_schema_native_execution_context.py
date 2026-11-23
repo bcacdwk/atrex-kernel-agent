@@ -278,7 +278,8 @@ def test_same_root_legacy_correction_retains_history_and_next_d(integrated, monk
     if rewrite:
         assert state["hypothesis"] == "new-execution-rewrite"
         assert state["hypotheses"][key] == history[key]
-        assert state["working_draft"] == state["champion"]
+        assert state["hypotheses"][state["hypothesis"]]["seed"] == draft
+        assert state["working_draft"] == draft
     else:
         assert state["hypothesis"] == key and state["hypotheses"] == history
         assert state["working_draft"] == draft

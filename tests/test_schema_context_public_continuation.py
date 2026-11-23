@@ -75,3 +75,8 @@ def test_public_factory_new_operation_corrects_legacy_parent_without_new_root(tm
     frozen = state["planner_request"]["execution_context_sha256"]
     assert state["episodes"]["5"]["binding"]["execution_context_sha256"] == frozen
     assert [call["kind"] for call in harness.calls] == ["design", *(["implement"] * 4), "optimize", "implement"]
+    seed = old["working_draft"]
+    assert seed["identity"] != old["champion"]["identity"]
+    assert state["hypotheses"][state["hypothesis"]]["seed"] == state["episodes"]["5"]["binding"]["seed"] == seed
+    assert harness.calls[-1]["received"] == new_driver.state.read_source(
+        seed, owner=harness.campaigns[-1].candidate_workspace).files["kernel.py"]

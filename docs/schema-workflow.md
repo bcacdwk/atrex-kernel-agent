@@ -161,6 +161,17 @@ and main feedback at 8,000 characters. Each Planner operation freezes these
 inputs before its first call; recovery reuses them. Planner's concrete next
 actions accompany the frozen design in the next Coder Episode.
 
+A new design continues from that operation's frozen working draft, even when
+the draft failed qualification or was qualified without champion promotion.
+With no working draft it uses the frozen champion/baseline. The new hypothesis
+and its first D Episode use the same seed; the global champion remains the
+separate promotion and performance baseline. This transfers no qualification or
+measurement to the new Schema: D still needs new native tests and independent
+qualification. `keep` and pure fact corrections retain their existing behavior.
+The choice is recorded only for new Planner operations. Older frozen operations
+retain their original champion seed rule, and published hypotheses and pending
+D bindings are never rewritten on resume.
+
 Design and optimization writers first read the full public Task, hardware,
 feedback and source identities, then write an intermediate starter or current
 design closure. They consult specifications by relevant field and use candidate

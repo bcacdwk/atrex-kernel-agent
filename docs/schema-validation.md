@@ -1,6 +1,8 @@
 # Schema 实施与运行验证记录
 
-记录截至 2026-11-23。本轮资格反馈、执行事实纠错及历史 Device 标签兼容已随 `20dcc9e` 提交，四包实际发行与独立安装验证通过；两条实际原根的安装版只读接续门也已通过。vector 与 GEMM 此前各一次同根接续到 `789c40f`，新发行的真实 E/D 验收尚未完成。有效重复进展及连续 72 小时观察仍未完成。
+记录截至 2026-11-23。本轮资格反馈、执行事实纠错及历史 Device 标签兼容已随 `20dcc9e` 提交并通过独立发行安装验证。GEMM 已同根接续该发行，真实 E 读取旧资格反馈、发表三叶事实纠错 v2，新 D 实际收到 v2；新 source 的完整 Task Eval、独立资格及连续 72 小时有效稳定仍未完成。vector 仍处于 `789c40f` 的原窗口结算阶段。
+
+新设计沿用冻结 working draft 的配对起点修复已通过源码独审（作者 113 项、独审 18 项 CPU 测试分别通过），本记录时点尚未发行。它只影响未来新 E；旧已冻结 GEMM a11/v2 的 seed、intent 和费用保持。新 Schema 仍须重新资格，合法 fail/unknown draft 可作实现起点，不能继承资格。
 
 ## 目标与证据边界
 
@@ -68,8 +70,8 @@
 
 上述各阶段完整 **3072 项** prefix 内容/权限/链接 seal 保持一致，AKA cache/pyc 为 0；没有删除缓存、热改安装或更改基准 seal。三组安装 guard 的违规计数均为 0，这不代表整个历史会话的网络或保密保证。不同范围及此前源码批次不累加，未重跑全仓、旧 36 Episode 或全部历史套件；此前红/绿及失败原件保留。
 
-后继准备另以最终安装版对两条实际原根完成只读 strict capture/restore、公开装配及 successor/proof/checker/Contract 门，0 publication、0 原件写入。旧 GEMM 的具体 fail 可按实际 selector 投影给新 E；这仍是只读准备证据，尚不能证明真实新 E 已收到反馈、发表纠错版本或新 D 完成资格与测量。
+后继准备另以最终安装版对两条实际原根完成只读 strict capture/restore、公开装配及 successor/proof/checker/Contract 门，0 publication、0 原件写入。随后 GEMM 的真实新 E 已读取旧 fail 反馈、发表三叶事实纠错 v2，新 D 输入也已核对；首批 E/D 后完整 3072 项 prefix seal 一致。新 source 的完整 Task Eval、独立资格与测量仍待，精确证据见 N 的 `validate-gemm-schema-closure-live-handoff.md`。
 
 细节以 N 下五份外置报告为准：`implement-qualification-feedback-delivery.md`、`implement-planner-contract-correction.md`、`integrate-schema-execution-authority.md`、`fix-and-simplify-schema-closure.md`、`fix-legacy-schema-device-label.md`。后两份更新了早期接口和阻塞结论；最终独审见 `final-audit-schema-authority.md`，实际提交/发行及安装版后继准备分别见 `commit-release-schema-closure.md`、`prepare-schema-closure-successors.md`。没有把各阶段增量相加为统一代码或费用总数。
 
-本轮已具备上述发行与安装资格，仍待真实后继验收。此次两原根升级须待原 owner 正常结清到真实 E 入口，接入可信审阅/原件，由新 E 发表纠正事实并处理 pipeline 设计问题的新 Schema，再由 D 产生新 sealed source，完成全 Task 测试、独立资格和原生测量。不能在旧不一致 Contract 中强推 D，或写 state 提前 `close_window`；这一要求针对本次升级，正常后续窗口仍由原生控制器自动推进。三叶事实纠错不豁免原 Tile_pipeline fail，CPU 或只读门通过不代表线上修复、晋升或 72 小时目标达成。
+本轮已具备上述发行与安装资格，真实后继验收仍未闭环。后续两原根升级须待各自当前 owner 正常结清到真实 E 入口，再由新 E/D 产生新 sealed source，完成全 Task 测试、独立资格和原生测量。不能写 state 提前 `close_window`；正常窗口仍由原生控制器推进。GEMM 已发表的三叶事实纠错不豁免原 Tile_pipeline fail，CPU 或只读门通过不代表晋升或 72 小时目标达成。

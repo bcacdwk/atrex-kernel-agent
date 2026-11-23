@@ -891,7 +891,10 @@ class SchemaWorkflow:
                     qualification_feedback=self._qualification_feedback(campaign))}] if data["design"] else [],
                 "require_new": needs_new_hypothesis(hypothesis),
                 "sources": {role: data[role] for role in ("champion", "tested_candidate", "working_draft")
-                            if data[role] is not None}}
+                            if data[role] is not None},
+                # Freeze the role, reusing the original source refs/bytes. Its
+                # absence distinguishes old operations with champion semantics.
+                "replacement_seed_role": "working_draft" if data["working_draft"] is not None else "champion"}
             if operation != "extract":
                 context = self._new_context(campaign, operation_id)
                 frozen.update(self._freeze_context(context))
@@ -916,6 +919,13 @@ class SchemaWorkflow:
         for role, ref in frozen["sources"].items():
             source = self.state.read_source(ref, owner=campaign.candidate_workspace)
             source_files.update({f"sources/{role}/{name}": raw for name, raw in source.files.items() if raw is not None})
+        if "replacement_seed_role" in frozen:
+            role = frozen["replacement_seed_role"]
+            if role not in ("working_draft", "champion") or role not in frozen["sources"]:
+                raise RecoveryRequired("Frozen replacement seed role has no retained source")
+            replacement_seed = frozen["sources"][role]
+        else:
+            replacement_seed = data["champion"]  # Replay the original legacy rule.
         request = PlannerRequest(prepared_id=data["prepared"]["identity"], operation_id=operation_id,
             version=frozen["version"], directory=self.directory / "operations" / operation_id,
             public_task=data["prepared"]["public_task"], target_hardware=data["prepared"]["hardware"],
@@ -972,11 +982,11 @@ class SchemaWorkflow:
                 if not fact_correction and (new_hypothesis or data["hypothesis"] is None):
                     key = result.hypothesis_key or "design:" + artifact.manifest["closure_digest"]
                     data["hypothesis"] = key
-                    data["hypotheses"].setdefault(key, self._new_hypothesis(data["champion"]))
-                # Every new graph begins at the real champion. Attribution of
-                # this inherited source is retained until actual new evidence.
+                    data["hypotheses"].setdefault(key, self._new_hypothesis(replacement_seed))
+                # Continue the frozen branch source across design changes.
+                # A seed transfers no qualification, measurement or promotion.
                 if not fact_correction:
-                    data["working_draft"] = data["champion"]
+                    data["working_draft"] = replacement_seed
         elif result.status == "keep":
             if (request.require_new or data["working_draft"] is None or not result.next_actions
                     or data["design"] is None):

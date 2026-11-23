@@ -124,7 +124,7 @@ def controller(root, campaign, *, limits=None, planner=None, initial=None, **kwa
     return driver, planner
 
 
-def test_native_windows_retain_draft_and_new_math_design_starts_at_champion(tmp_path, monkeypatch):
+def test_native_windows_retain_draft_across_new_math_design(tmp_path, monkeypatch):
     monkeypatch.setattr("aka.workflow.schema.workflow.extract", lambda *a, **kw: pytest.fail("no-SOTA design called extract"))
     campaign = native(tmp_path)
     driver, planner = controller(tmp_path, campaign, limits=RunLimits(max_episodes=10))
@@ -138,7 +138,9 @@ def test_native_windows_retain_draft_and_new_math_design_starts_at_champion(tmp_
     assert len(state["windows"]) == 2 and state["window"]["status"] == "partial"
     assert campaign.agent.calls[0]["received"] == BASELINE
     assert campaign.agent.calls[7]["received"].count(b"synthetic coder progress") == 7
-    assert campaign.agent.calls[8]["received"] == BASELINE
+    assert campaign.agent.calls[8]["received"].count(b"synthetic coder progress") == 8
+    seed = state["episodes"]["8"]["draft"]
+    assert state["hypotheses"]["h2"]["seed"] == state["episodes"]["9"]["binding"]["seed"] == seed
     assert state["episodes"]["8"]["draft"]["identity"] != state["episodes"]["8"]["champion"]["identity"]
     assert state["episodes"]["8"]["tested_candidate"] is None
     assert state["hypotheses"]["h1"]["milestones"] == []
