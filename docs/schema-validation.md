@@ -115,3 +115,6 @@
 - 23:45 UTC vector原E正常退出并发布v3（identity`bb2f1967…`），原生完整性验证通过；parent精确绑定v2、冻结Contract相同、execution view确实改变。原控制器自动进入window2/Episode5，新Coder绑定v3与champion650fd…；已有SOTA链的optimize→implement→optimize→implement已在原根真实走通，尚不代表多日稳定。
 - 准备恢复门现按原native/physical身份、scope和已结算permit核对有据未提交记录；新普通recorded Eval补最少身份投影，旧记录不回填。独审发现并修复了原Job查询的多回执误封及保存后字典顺序依赖，并兼容原有同活keyed多permit成功链。单POST+原Job查询仍计1派发，两POST同key恢复仍计2；原unknown和历史账均保留，缺证据/错关联继续拒绝。最终114项相关CPU、独立57项及16个定点反例通过；实际两原根只读刷新通过且记录/账目不变。尚待新发行和live切换。
 - 2026-11-23 00:00 UTC GEMM首个新实现f5ef07b0…的全量Eval `ev_1f22fcfe08e1` 已终态：10形状valid/complete/PASS，193.3558028微秒；随后自动开始profile。该测量尚非同分配正式acceptance，未完成资格审查或晋升，不据此宣称正式性能提升。
+- `e6f4866` 四包闭包、187项安装版回归、最终独立安装57项回归均通过。新外壳的实际SIGUSR1 CPU检查覆盖prepare/Planner/Episode：等待完整阶段返回后以interrupted停止，保存重开保留原账并可继续；此信号只适用于新外壳，不能发给旧live owner。两原根安装版准备核对通过，尚未实际切换。
+- vector v3 Episode5新源9cef0080…完整Eval通过，探索ABBA为−0.7417%；Agent主动回退champion并pivot，独立资格未请求，不能解读成审查认定不符合Schema。已核真实提示和代码：较慢候选可送现有candidate_ready，资格通过但拒绝晋升时可留working draft，没有新增handoff的必要。此次仅澄清Schema专属D完成语义及现有summary用法，原性能/资格/退出门不变；新候选如何实际响应此提示仍待后继实测。
+- 反馈现区分缺回执、unknown、fail和无实质改动；缺回执不推断未请求。独审发现的自洽旧源fail/unknown归因边界已修：负面反馈须绑定实际sealed源，不能借seed/working/tested代替；默认Planner原有上游保护，未声称live曾受此故障影响。最终独立25项、13个实际settlement反例、80案例进展差分和材料检查通过；正向门、状态与计数保持。仅coder材料成员变更，需新发行后再用于新操作。

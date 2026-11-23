@@ -1025,7 +1025,7 @@ class SchemaWorkflow:
             raise RecoveryRequired("Progress qualification differs from the sealed native source")
         progress_assessment = {}
         progress = self._progress(binding, attempt, fresh, hypothesis=data["hypotheses"][binding["hypothesis"]],
-            assessment=progress_assessment)
+            assessment=progress_assessment, sealed_source_identity=sealed["identity"] if sealed is not None else None)
         data["champion"], data["tested_candidate"], data["working_draft"] = champion, tested, draft
         data["episodes"][str(episode)] = {"episode": episode, "binding": binding,
             "status": attempt["status"], "accepted": attempt["accepted"], "violation": attempt.get("violation"),
@@ -1054,7 +1054,7 @@ class SchemaWorkflow:
         engine.stop_episode(episode=binding["episode"], reason=reason)
         self._settle(campaign, binding, campaign.episode_facts(binding["episode"]))
 
-    def _progress(self, binding, attempt, fresh, *, hypothesis=None, assessment=None):
+    def _progress(self, binding, attempt, fresh, *, hypothesis=None, assessment=None, sealed_source_identity=None):
         from aka.evaluation.source_archives import source_artifact
         from .progress import comparison_key, measurement_evidence, positive
         import hashlib
@@ -1062,12 +1062,17 @@ class SchemaWorkflow:
             hypothesis = self.state.data["hypotheses"][binding["hypothesis"]]
         assessment = assessment if assessment is not None else {}
         assessment.update(status="no-progress", reasons=[])
-        qualified = attempt.get("candidate_qualification") or {}
-        if qualified.get("qualified") is not True or qualified.get("substantive_change") is not True:
-            assessment["reasons"] = ["source-not-qualified"]
+        qualified = attempt.get("candidate_qualification")
+        if qualified is None:
+            # Absence does not establish whether review was attempted or failed.
+            assessment["reasons"] = ["qualification-receipt-missing"]
+            return []
+        if not isinstance(qualified, dict):
+            assessment["reasons"] = ["qualification-unknown"]
             return []
         receipt = qualified.get("binding")
-        if receipt is not None and (receipt.get("prepared_id") != binding["prepared_id"]
+        if receipt is not None and (not isinstance(receipt, dict)
+                or receipt.get("prepared_id") != binding["prepared_id"]
                 or receipt.get("design_identity") != binding["design"]["identity"]
                 or receipt.get("source_identity") != qualified.get("source_identity")
                 or receipt.get("public_task_sha256") != hashlib.sha256(
@@ -1075,6 +1080,21 @@ class SchemaWorkflow:
                 or receipt.get("target_hardware_sha256") != hashlib.sha256(
                     self.state.data["prepared"]["hardware"].encode()).hexdigest()):
             assessment["reasons"] = ["qualification-binding-mismatch"]
+            return []
+        if qualified.get("qualified") is not True:
+            # An internally consistent result may still review an older source.
+            # Only the actual native seal can bind a negative verdict here.
+            identity = qualified.get("source_identity")
+            if sealed_source_identity is None or identity is None:
+                reason = "qualification-unknown"
+            elif identity != sealed_source_identity:
+                reason = "qualification-binding-mismatch"
+            else:
+                reason = "qualification-failed" if qualified.get("verdict") == "fail" else "qualification-unknown"
+            assessment["reasons"] = [reason]
+            return []
+        if qualified.get("substantive_change") is not True:
+            assessment["reasons"] = ["no-substantive-change"]
             return []
         identity = qualified.get("source_identity")
         if identity == hypothesis["seed"]["identity"] or identity in hypothesis["seen_sources"]:

@@ -153,6 +153,21 @@ unchanged source, partial measurements and unknown qualification do not count
 as new design progress. Independent qualification is a model judgment, not a
 formal proof; the native correctness and promotion gates still apply.
 
+Coder's D completion target is faithful implementation of the fixed design.
+Once Coder judges it implemented and has a passing standard full Eval for the
+exact current source, it retains that source and submits the existing
+`candidate_ready` report for independent qualification, even when slower than
+the champion or when comparison is unknown. Eval does not establish Schema
+fidelity; qualification judges fidelity, and native ABBA/policy gates decide
+global champion promotion. Incomplete implementation, concrete conflicts,
+bounded exhaustion or infrastructure blockers still permit an evidence-backed
+`pivot`/`blocked`. The existing report `summary` carries the
+`schema_implementation` mapping, deviations, limitations and original records.
+Progress feedback distinguishes a missing retained qualification result
+(`qualification-receipt-missing`, which does not establish whether review was
+attempted) from `qualification-failed`,
+`qualification-unknown` and `no-substantive-change`; these remain `no-progress`.
+
 Qualification can correct a completed review's malformed output up to Planner's
 `max_repairs` limit (default one). Each correction uses a fresh, admitted and
 metered native session with the same frozen Task, hardware, design, candidate and
