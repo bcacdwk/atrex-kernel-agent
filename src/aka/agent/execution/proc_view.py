@@ -65,7 +65,7 @@ def prepare_launch(argv, command, environment, workspace, *, provider_executable
                  'sleep 0.025; done; exec "$@"', "aka-proc-ready", *command]
         launch = SandboxLaunch.with_bwrap_environment(rewritten, ready, child_values)
         launch.environment = dict(environment)
-        launch.command = [sys.executable, "-m", "aka.agent.execution.proc_view",
+        launch.command = [sys.executable, "-B", "-m", "aka.agent.execution.proc_view",
                           "--workspace", str(workspace), "--view", str(destination),
                           "--argument-fd", str(launch.pass_fds[0]), "--", *launch.command]
         launch._cleanup = resources.close

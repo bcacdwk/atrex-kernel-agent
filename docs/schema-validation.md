@@ -118,3 +118,6 @@
 - `e6f4866` 四包闭包、187项安装版回归、最终独立安装57项回归均通过。新外壳的实际SIGUSR1 CPU检查覆盖prepare/Planner/Episode：等待完整阶段返回后以interrupted停止，保存重开保留原账并可继续；此信号只适用于新外壳，不能发给旧live owner。两原根安装版准备核对通过，尚未实际切换。
 - vector v3 Episode5新源9cef0080…完整Eval通过，探索ABBA为−0.7417%；Agent主动回退champion并pivot，独立资格未请求，不能解读成审查认定不符合Schema。已核真实提示和代码：较慢候选可送现有candidate_ready，资格通过但拒绝晋升时可留working draft，没有新增handoff的必要。此次仅澄清Schema专属D完成语义及现有summary用法，原性能/资格/退出门不变；新候选如何实际响应此提示仍待后继实测。
 - 反馈现区分缺回执、unknown、fail和无实质改动；缺回执不推断未请求。独审发现的自洽旧源fail/unknown归因边界已修：负面反馈须绑定实际sealed源，不能借seed/working/tested代替；默认Planner原有上游保护，未声称live曾受此故障影响。最终独立25项、13个实际settlement反例、80案例进展差分和材料检查通过；正向门、状态与计数保持。仅coder材料成员变更，需新发行后再用于新操作。
+- `a21a952` 实际发行验证完成后，GEMM受控停止、由原65d API清结并在原根接续。Episode1仅用剩余476.27秒后预算耗尽，无report/资格/晋升；旧3600秒预算没有重置。随后自动进入Episode2，真实Coder输入已包含新提示，Qwen/adaptive/max/32000保持；原high调用已核实是依赖审查，不能误作Coder参数漂移。
+- vector Episode6已独立qualification pass，绑定实际sealed源eaaca981…；正式accepted=false，champion650fd…保留，合规draft继续参与同图迭代，原控制器已进入Episode7。这是资格与晋升分离的真实证据，不把探索ABBA的正收益冒充正式接受。
+- a21运行后封存校验发现新增3目录/4个pyc，原3069项内容、权限、链接均未改。实际`proc_view` helper未继承父进程`-B`；4个缓存与封存源码编译结构一致。未删缓存、改seal或热补运行环境，vector接续暂缓。修复只给helper启动添加`-B`；旧源5个真实namespace场景均复现缓存新增，新源5项通过，主代理独立5项复验通过；实际超时/输出/回收合同补充检查通过。新发行及真实连续运行仍待完成。
