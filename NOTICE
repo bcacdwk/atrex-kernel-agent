@@ -153,7 +153,7 @@ Files: gpu-wiki/reference-kernels/amd/rdna4/gluon/
 License Compatibility Summary
 ================================================================================
 
-All third-party code included in this repository is licensed under one of:
+The third-party components listed above are licensed under one of:
   - Apache-2.0 (compatible with project license)
   - MIT (compatible with Apache-2.0)
   - BSD-3-Clause (compatible with Apache-2.0)
@@ -161,3 +161,9 @@ All third-party code included in this repository is licensed under one of:
 These licenses are all permissive and compatible with the Apache License 2.0
 used by this project. Original copyright headers, where present in the upstream
 sources, are preserved in the corresponding files.
+
+The AKA Schema language, selected materials, and L20D example have separate
+source notices in src/aka/workflow/schema/NOTICE.md and
+examples/schema/l20d/NOTICE.md. The inspected upstream snapshot had no root
+license declaration; this summary does not assert a license grant or relicense
+those portions.
